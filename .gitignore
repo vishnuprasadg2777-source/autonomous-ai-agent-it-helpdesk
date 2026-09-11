@@ -1,0 +1,53 @@
+# macOS
+.DS_Store
+
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# FastAPI / local runtime
+*.log
+
+# Node
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# Build / coverage
+dist/
+build/
+coverage/
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+
+# TypeScript
+*.tsbuildinfo
+
+# OS/editor temporary files
+*.swp
+*.swo
+*~
