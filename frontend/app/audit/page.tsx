@@ -107,7 +107,7 @@ const demoEvents: AuditEvent[] = [
     metadata: [
       { key: "Policy", value: "POL-002" },
       { key: "Decision", value: "allowed" },
-      { key: "Authorization", value: "Not required" },
+      { key: "Authorization", value: "Required" },
     ],
   },
   {
