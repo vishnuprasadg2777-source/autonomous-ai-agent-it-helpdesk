@@ -445,8 +445,8 @@ export default function ObservatoryPage() {
 
             <RuntimeStage
               number="05"
-              title="Control"
-              detail="Policy + risk"
+              title="Policy"
+              detail="Authorization + risk"
               icon={ShieldCheck}
               active
             />
@@ -776,7 +776,7 @@ export default function ObservatoryPage() {
           <div className="flex items-center gap-2">
             <span>Understand</span>
             <span>→</span>
-            <span>Control</span>
+            <span>Policy</span>
             <span>→</span>
             <span>Execute</span>
             <span>→</span>

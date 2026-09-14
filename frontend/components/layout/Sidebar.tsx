@@ -1,12 +1,12 @@
 "use client";
 
+import Image from "next/image";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   ChevronLeft,
   ChevronRight,
-  Command,
   Settings,
   ShieldCheck,
 } from "lucide-react";
@@ -35,21 +35,33 @@ export function Sidebar() {
     >
       {/* BRAND */}
       <div className="flex h-[76px] shrink-0 items-center border-b border-white/[0.06] px-4">
-        <div className="flex min-w-0 items-center gap-3">
+        <Link
+          href="/"
+          aria-label="Phoenix IT Helpdesk Command Center"
+          className="flex min-w-0 items-center gap-3"
+        >
           <motion.div
-            whileHover={{ scale: 1.03 }}
+            whileHover={{ scale: 1.035 }}
             transition={{ duration: 0.2 }}
-            className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] border border-indigo-300/[0.16] bg-indigo-400/[0.07]"
+            className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-[11px]"
           >
-            <Command className="h-[17px] w-[17px] text-indigo-200" />
+            <Image
+              src="/phoenix-logo.png"
+              alt="Phoenix IT Helpdesk"
+              width={44}
+              height={44}
+              priority
+              className="h-11 w-11 object-contain"
+            />
 
-            <span className="absolute right-[7px] top-[7px] h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_9px_rgba(52,211,153,0.65)]" />
+            <span className="absolute right-[5px] top-[5px] h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_9px_rgba(52,211,153,0.65)]" />
           </motion.div>
 
           {!collapsed && (
             <motion.div
               initial={{ opacity: 0, x: -5 }}
               animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.2 }}
               className="min-w-0"
             >
               <div className="truncate text-[12px] font-semibold tracking-[-0.01em] text-zinc-100">
@@ -61,7 +73,7 @@ export function Sidebar() {
               </div>
             </motion.div>
           )}
-        </div>
+        </Link>
       </div>
 
       {/* ENVIRONMENT */}
@@ -72,11 +84,7 @@ export function Sidebar() {
             const active = pathname === item.href;
 
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="block"
-              >
+              <Link key={item.href} href={item.href} className="block">
                 <motion.div
                   whileHover={{ x: active ? 0 : 1 }}
                   transition={{ duration: 0.15 }}
@@ -96,9 +104,7 @@ export function Sidebar() {
                     >
                       <Icon
                         className={`h-3.5 w-3.5 ${
-                          active
-                            ? "text-emerald-300/60"
-                            : "text-zinc-400"
+                          active ? "text-emerald-300/60" : "text-zinc-400"
                         }`}
                       />
                     </div>
@@ -106,9 +112,7 @@ export function Sidebar() {
                     <div className="min-w-0">
                       <div
                         className={`truncate text-[11px] font-medium ${
-                          active
-                            ? "text-emerald-200/70"
-                            : "text-zinc-300"
+                          active ? "text-emerald-200/70" : "text-zinc-300"
                         }`}
                       >
                         {item.label}
@@ -122,9 +126,7 @@ export function Sidebar() {
 
                   <ChevronRight
                     className={`h-3.5 w-3.5 ${
-                      active
-                        ? "text-emerald-300/40"
-                        : "text-zinc-700"
+                      active ? "text-emerald-300/40" : "text-zinc-700"
                     }`}
                   />
                 </motion.div>
@@ -270,9 +272,7 @@ export function Sidebar() {
                     whileHover={{ x: active ? 0 : 1 }}
                     transition={{ duration: 0.15 }}
                     className={`group flex h-10 items-center justify-center rounded-lg transition-colors ${
-                      active
-                        ? "bg-white/[0.075]"
-                        : "hover:bg-white/[0.035]"
+                      active ? "bg-white/[0.075]" : "hover:bg-white/[0.035]"
                     }`}
                   >
                     {active && (
@@ -318,13 +318,9 @@ export function Sidebar() {
             </div>
 
             <div className="mt-2.5 flex items-center justify-between text-[9px]">
-              <span className="text-zinc-700">
-                Agent infrastructure
-              </span>
+              <span className="text-zinc-700">Agent infrastructure</span>
 
-              <span className="text-emerald-500/80">
-                100%
-              </span>
+              <span className="text-emerald-500/80">100%</span>
             </div>
           </div>
         )}
@@ -343,9 +339,7 @@ export function Sidebar() {
             onClick={() => setCollapsed(!collapsed)}
             className="flex h-9 flex-1 items-center justify-center rounded-lg text-zinc-600 transition-colors hover:bg-white/[0.04] hover:text-zinc-300"
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            aria-label={
-              collapsed ? "Expand sidebar" : "Collapse sidebar"
-            }
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {collapsed ? (
               <ChevronRight className="h-[15px] w-[15px]" />

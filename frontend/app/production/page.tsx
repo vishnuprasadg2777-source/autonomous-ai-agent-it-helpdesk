@@ -121,19 +121,26 @@ const topology = [
 export default function ProductionPage() {
   const [backendStatus, setBackendStatus] =
     useState<BackendStatus>("checking");
-  const [latestRun, setLatestRun] = useState<AgentRun | null>(null);
-  const [lastChecked, setLastChecked] = useState("Checking…");
+  const [latestRun, setLatestRun] =
+    useState<AgentRun | null>(null);
+  const [lastChecked, setLastChecked] =
+    useState("Checking…");
 
   const checkBackend = async () => {
     setBackendStatus("checking");
 
     try {
-      const response = await fetch(`${API_BASE_URL}/health`, {
-        cache: "no-store",
-      });
+      const response = await fetch(
+        `${API_BASE_URL}/health`,
+        {
+          cache: "no-store",
+        },
+      );
 
       if (!response.ok) {
-        throw new Error("Backend health check failed");
+        throw new Error(
+          "Backend health check failed",
+        );
       }
 
       setBackendStatus("online");
@@ -158,14 +165,19 @@ export default function ProductionPage() {
 
   const loadLatestRun = () => {
     try {
-      const stored = window.localStorage.getItem(STORAGE_KEY);
+      const stored =
+        window.localStorage.getItem(
+          STORAGE_KEY,
+        );
 
       if (!stored) {
         setLatestRun(null);
         return;
       }
 
-      setLatestRun(JSON.parse(stored) as AgentRun);
+      setLatestRun(
+        JSON.parse(stored) as AgentRun,
+      );
     } catch {
       setLatestRun(null);
     }
@@ -176,28 +188,45 @@ export default function ProductionPage() {
       loadLatestRun();
     };
 
-    window.addEventListener(AGENT_RUN_EVENT, handleAgentRun);
+    window.addEventListener(
+      AGENT_RUN_EVENT,
+      handleAgentRun,
+    );
 
-    const frame = window.requestAnimationFrame(() => {
-      loadLatestRun();
-      checkBackend();
-    });
+    const frame =
+      window.requestAnimationFrame(() => {
+        loadLatestRun();
+        checkBackend();
+      });
 
-    const interval = window.setInterval(() => {
-      checkBackend();
-    }, 30000);
+    const interval =
+      window.setInterval(() => {
+        checkBackend();
+      }, 30000);
 
     return () => {
       window.cancelAnimationFrame(frame);
       window.clearInterval(interval);
-      window.removeEventListener(AGENT_RUN_EVENT, handleAgentRun);
+      window.removeEventListener(
+        AGENT_RUN_EVENT,
+        handleAgentRun,
+      );
     };
   }, []);
 
-  const environmentOperational = backendStatus === "online";
+  const environmentOperational =
+    backendStatus === "online";
 
-  const latestTool = latestRun?.tool?.tool ?? "No execution yet";
-  const latestPolicy = latestRun?.policy?.decision ?? "No evaluation yet";
+  const latestPolicy =
+    latestRun?.policy?.decision ??
+    "No evaluation yet";
+
+  const latestTool =
+    latestRun?.tool?.tool ??
+    "No execution yet";
+
+  const latestVerification =
+    latestRun?.verification;
 
   const servicesWithStatus = useMemo(
     () =>
@@ -208,35 +237,41 @@ export default function ProductionPage() {
             status:
               backendStatus === "online"
                 ? "Operational"
-                : backendStatus === "offline"
+                : backendStatus ===
+                    "offline"
                   ? "Unavailable"
                   : "Checking",
           };
         }
 
+        if (index === 3) {
+          return {
+            ...service,
+            status: latestRun?.policy
+              ? "Operational"
+              : "Ready",
+          };
+        }
+
         return {
           ...service,
-          status:
-            latestRun && index === 3
-              ? latestRun.policy
-                ? "Operational"
-                : "Ready"
-              : "Operational",
+          status: "Operational",
         };
       }),
     [backendStatus, latestRun],
   );
 
   return (
-    <div className="min-h-full bg-[#060708]">
+    <div className="min-h-full bg-[#060708] text-white">
       <div className="mx-auto max-w-[1600px] px-6 py-7 lg:px-8">
-        {/* Header */}
-        <header className="mb-7 flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
+        <header className="mb-7 flex flex-col justify-between gap-5 border-b border-white/[0.07] pb-7 lg:flex-row lg:items-end">
           <div>
             <div className="mb-3 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-white/35">
               <span>Environment</span>
               <ChevronRight className="h-3 w-3" />
-              <span className="text-white/65">Production</span>
+              <span className="text-white/65">
+                Production
+              </span>
             </div>
 
             <div className="flex items-center gap-3">
@@ -245,7 +280,7 @@ export default function ProductionPage() {
               </div>
 
               <div>
-                <h1 className="text-2xl font-semibold tracking-[-0.03em] text-white">
+                <h1 className="text-2xl font-semibold tracking-[-0.03em]">
                   Production
                 </h1>
 
@@ -286,41 +321,44 @@ export default function ProductionPage() {
             >
               {backendStatus === "online"
                 ? "Environment Operational"
-                : backendStatus === "checking"
+                : backendStatus ===
+                    "checking"
                   ? "Checking Environment"
                   : "Backend Offline"}
             </span>
           </div>
         </header>
 
-        {/* Prototype boundary */}
         <section className="mb-6 rounded-xl border border-amber-300/10 bg-amber-300/[0.025] px-4 py-3.5">
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-200/55" />
 
-            <div className="min-w-0">
+            <div>
               <p className="text-xs font-medium text-amber-100/65">
                 Prototype deployment boundary
               </p>
 
               <p className="mt-1 text-[11px] leading-5 text-white/35">
-                Phoenix is running as a development prototype. IT actions use
-                controlled/mock tools and logical state rather than real
-                enterprise infrastructure. Production labels describe the
-                logical environment shown by this interface.
+                Phoenix is currently demonstrated as a
+                controlled development prototype. IT
+                actions use controlled/mock tools and
+                logical IT state rather than real
+                enterprise infrastructure. Production
+                labels represent the logical runtime
+                environment presented by this interface.
               </p>
             </div>
           </div>
         </section>
 
-        {/* Summary */}
         <section className="mb-6 grid grid-cols-2 gap-3 xl:grid-cols-4">
           <Metric
             label="Backend API"
             value={
               backendStatus === "online"
                 ? "Online"
-                : backendStatus === "checking"
+                : backendStatus ===
+                    "checking"
                   ? "Checking"
                   : "Offline"
             }
@@ -331,22 +369,43 @@ export default function ProductionPage() {
 
           <Metric
             label="Agent Runtime"
-            value={latestRun ? "Active" : "Ready"}
+            value={
+              latestRun
+                ? latestRun.status ===
+                    "resolved"
+                  ? "Resolved"
+                  : latestRun.status ===
+                      "escalated"
+                    ? "Escalated"
+                    : "Active"
+                : "Ready"
+            }
             detail={
               latestRun
-                ? `${latestRun.ticket_id} · ${latestRun.status}`
+                ? `${latestRun.ticket_id} · latest run`
                 : "Awaiting execution"
             }
             icon={Cpu}
-            status={latestRun ? "online" : "checking"}
+            status={
+              latestRun
+                ? "online"
+                : "checking"
+            }
           />
 
           <Metric
             label="Policy Layer"
-            value={latestRun?.policy ? "Evaluated" : "Active"}
+            value={
+              latestRun?.policy
+                ? latestPolicy ===
+                    "allowed"
+                  ? "Allowed"
+                  : "Blocked"
+                : "Active"
+            }
             detail={
               latestRun?.policy
-                ? `${latestRun.policy.policy_id} · ${latestPolicy}`
+                ? `${latestRun.policy.policy_id} · ${latestRun.policy.risk} risk`
                 : "Authorization enforced"
             }
             icon={ShieldCheck}
@@ -356,27 +415,27 @@ export default function ProductionPage() {
           <Metric
             label="Verification"
             value={
-              latestRun?.verification
-                ? latestRun.verification.verified
+              latestVerification
+                ? latestVerification.verified
                   ? "Verified"
                   : "Mismatch"
                 : "Ready"
             }
             detail={
-              latestRun?.verification
-                ? latestRun.verification.message
+              latestVerification
+                ? latestVerification.message
                 : "Expected state confirmation"
             }
             icon={
-              latestRun?.verification?.verified
+              latestVerification?.verified
                 ? CheckCircle2
-                : latestRun?.verification
+                : latestVerification
                   ? XCircle
                   : Activity
             }
             status={
-              latestRun?.verification
-                ? latestRun.verification.verified
+              latestVerification
+                ? latestVerification.verified
                   ? "online"
                   : "offline"
                 : "checking"
@@ -384,11 +443,10 @@ export default function ProductionPage() {
           />
         </section>
 
-        {/* Production Health */}
-        <section className="mb-6 rounded-2xl border border-white/[0.08] bg-white/[0.025]">
+        <section className="mb-6 overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.025]">
           <div className="flex flex-col justify-between gap-4 border-b border-white/[0.07] px-5 py-4 md:flex-row md:items-center">
             <div>
-              <p className="text-sm font-semibold text-white">
+              <p className="text-sm font-semibold">
                 Production Health
               </p>
 
@@ -398,6 +456,7 @@ export default function ProductionPage() {
             </div>
 
             <button
+              type="button"
               onClick={checkBackend}
               className="flex items-center gap-2 self-start rounded-lg border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-xs text-white/45 transition hover:bg-white/[0.05] hover:text-white/75 md:self-auto"
             >
@@ -411,7 +470,8 @@ export default function ProductionPage() {
               icon={
                 backendStatus === "online"
                   ? CheckCircle2
-                  : backendStatus === "offline"
+                  : backendStatus ===
+                      "offline"
                     ? XCircle
                     : Activity
               }
@@ -419,19 +479,32 @@ export default function ProductionPage() {
               status={
                 backendStatus === "online"
                   ? "Operational"
-                  : backendStatus === "offline"
+                  : backendStatus ===
+                      "offline"
                     ? "Offline"
                     : "Checking"
               }
               description={`${API_BASE_URL}/health`}
-              healthy={backendStatus === "online"}
-              warning={backendStatus === "offline"}
+              healthy={
+                backendStatus === "online"
+              }
+              warning={
+                backendStatus === "offline"
+              }
             />
 
             <HealthItem
-              icon={latestRun ? CheckCircle2 : Activity}
+              icon={
+                latestRun
+                  ? CheckCircle2
+                  : Activity
+              }
               title="Agent Execution"
-              status={latestRun ? "Ready" : "Awaiting Run"}
+              status={
+                latestRun
+                  ? "Ready"
+                  : "Awaiting Run"
+              }
               description={
                 latestRun
                   ? `Latest execution: ${latestRun.ticket_id}`
@@ -444,30 +517,39 @@ export default function ProductionPage() {
             <HealthItem
               icon={ShieldCheck}
               title="Policy & Risk Controls"
-              status={latestRun?.policy ? "Evaluated" : "Monitoring"}
+              status={
+                latestRun?.policy
+                  ? "Evaluated"
+                  : "Monitoring"
+              }
               description={
                 latestRun?.policy
                   ? `${latestRun.policy.policy_id} · ${latestRun.policy.risk} risk · ${latestPolicy}`
                   : "Risk-sensitive actions remain subject to policy evaluation."
               }
-              healthy={latestRun?.policy?.decision === "allowed"}
-              warning={!latestRun?.policy}
+              healthy={
+                latestRun?.policy
+                  ? latestRun.policy.decision ===
+                    "allowed"
+                  : false
+              }
+              warning={
+                !latestRun?.policy
+              }
             />
           </div>
         </section>
 
-        {/* Latest execution */}
-        <section className="mb-6 rounded-2xl border border-white/[0.08] bg-white/[0.025]">
+        <section className="mb-6 overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.025]">
           <div className="border-b border-white/[0.07] px-5 py-4">
             <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
               <div>
-                <p className="text-sm font-semibold text-white">
+                <p className="text-sm font-semibold">
                   Latest Agent Execution
                 </p>
 
                 <p className="mt-1 text-xs text-white/35">
-                  Live execution context shared from the Autonomous Agent
-                  Workspace
+                  Live execution context shared from the Autonomous Agent Workspace
                 </p>
               </div>
 
@@ -485,18 +567,23 @@ export default function ProductionPage() {
               <ExecutionStat
                 label="Ticket"
                 value={latestRun.ticket_id}
-                detail={latestRun.understanding?.category ?? "IT request"}
+                detail={
+                  latestRun.understanding?.category ??
+                  "IT request"
+                }
               />
 
               <ExecutionStat
                 label="Intent"
                 value={
-                  latestRun.understanding?.intent ?? "Not available"
+                  latestRun.understanding?.intent ??
+                  "Not available"
                 }
                 detail={
                   latestRun.understanding
                     ? `${Math.round(
-                        latestRun.understanding.confidence * 100,
+                        latestRun.understanding
+                          .confidence * 100,
                       )}% confidence`
                     : "No understanding result"
                 }
@@ -505,9 +592,14 @@ export default function ProductionPage() {
               <ExecutionStat
                 label="Policy"
                 value={
-                  latestRun.policy?.decision ?? "Not evaluated"
+                  latestRun.policy?.decision ??
+                  "Not evaluated"
                 }
-                detail={latestRun.policy?.policy_id ?? "—"}
+                detail={
+                  latestRun.policy
+                    ? `${latestRun.policy.policy_id} · ${latestRun.policy.risk} risk`
+                    : "No policy result"
+                }
               />
 
               <ExecutionStat
@@ -525,14 +617,14 @@ export default function ProductionPage() {
               <ExecutionStat
                 label="Verification"
                 value={
-                  latestRun.verification
-                    ? latestRun.verification.verified
+                  latestVerification
+                    ? latestVerification.verified
                       ? "Verified"
                       : "Mismatch"
                     : "Pending"
                 }
                 detail={
-                  latestRun.verification?.status ??
+                  latestVerification?.status ??
                   "No verification result"
                 }
               />
@@ -550,8 +642,8 @@ export default function ProductionPage() {
                   </p>
 
                   <p className="mt-1 text-xs text-white/25">
-                    Run a request from the Agent Workspace to populate live
-                    execution telemetry here.
+                    Run a request from the Agent Workspace to
+                    populate live execution telemetry here.
                   </p>
                 </div>
               </div>
@@ -559,10 +651,9 @@ export default function ProductionPage() {
           )}
         </section>
 
-        {/* Topology */}
-        <section className="mb-6 rounded-2xl border border-white/[0.08] bg-white/[0.025]">
+        <section className="mb-6 overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.025]">
           <div className="border-b border-white/[0.07] px-5 py-4">
-            <p className="text-sm font-semibold text-white">
+            <p className="text-sm font-semibold">
               Production Topology
             </p>
 
@@ -571,46 +662,52 @@ export default function ProductionPage() {
             </p>
           </div>
 
-          <div className="overflow-x-auto px-5 py-7">
+          <div className="overflow-x-auto px-5 py-8">
             <div className="mx-auto flex min-w-[760px] max-w-6xl items-center justify-center">
-              {topology.map((item, index) => {
-                const Icon = item.icon;
+              {topology.map(
+                (item, index) => {
+                  const Icon = item.icon;
 
-                return (
-                  <div key={item.label} className="flex items-center">
-                    <div className="flex min-w-[112px] flex-col items-center">
-                      <div
-                        className={`flex h-12 w-12 items-center justify-center rounded-xl border ${
-                          item.label === "Phoenix Agent"
-                            ? "border-white/15 bg-white/[0.07]"
-                            : "border-white/[0.08] bg-white/[0.035]"
-                        }`}
-                      >
-                        <Icon className="h-5 w-5 text-white/70" />
+                  return (
+                    <div
+                      key={item.label}
+                      className="flex items-center"
+                    >
+                      <div className="flex min-w-[112px] flex-col items-center">
+                        <div
+                          className={`flex h-12 w-12 items-center justify-center rounded-xl border ${
+                            item.label ===
+                            "Phoenix Agent"
+                              ? "border-white/15 bg-white/[0.07]"
+                              : "border-white/[0.08] bg-white/[0.035]"
+                          }`}
+                        >
+                          <Icon className="h-5 w-5 text-white/70" />
+                        </div>
+
+                        <span className="mt-2 text-xs font-medium text-white/65">
+                          {item.label}
+                        </span>
                       </div>
 
-                      <span className="mt-2 text-xs font-medium text-white/65">
-                        {item.label}
-                      </span>
+                      {index <
+                        topology.length -
+                          1 && (
+                        <div className="mx-2 h-px w-10 bg-gradient-to-r from-white/10 via-white/20 to-white/10" />
+                      )}
                     </div>
-
-                    {index < topology.length - 1 && (
-                      <div className="mx-2 h-px w-10 bg-gradient-to-r from-white/10 via-white/20 to-white/10" />
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                },
+              )}
             </div>
           </div>
         </section>
 
-        {/* Services + Resources */}
         <div className="mb-6 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-          {/* Services */}
-          <section className="rounded-2xl border border-white/[0.08] bg-white/[0.025]">
+          <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.025]">
             <div className="flex items-center justify-between border-b border-white/[0.07] px-5 py-4">
               <div>
-                <p className="text-sm font-semibold text-white">
+                <p className="text-sm font-semibold">
                   Runtime Services
                 </p>
 
@@ -620,71 +717,78 @@ export default function ProductionPage() {
               </div>
 
               <span className="rounded-full border border-white/[0.07] px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-white/35">
-                {servicesWithStatus.length} services
+                {servicesWithStatus.length}{" "}
+                services
               </span>
             </div>
 
             <div className="divide-y divide-white/[0.06]">
-              {servicesWithStatus.map((service) => {
-                const Icon = service.icon;
+              {servicesWithStatus.map(
+                (service) => {
+                  const Icon = service.icon;
 
-                const isOffline = service.status === "Unavailable";
-                const isChecking = service.status === "Checking";
+                  const isOffline =
+                    service.status ===
+                    "Unavailable";
 
-                return (
-                  <div
-                    key={service.name}
-                    className="flex items-center justify-between gap-4 px-5 py-4"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.03]">
-                        <Icon className="h-4 w-4 text-white/55" />
+                  const isChecking =
+                    service.status ===
+                    "Checking";
+
+                  return (
+                    <div
+                      key={service.name}
+                      className="flex items-center justify-between gap-4 px-5 py-4"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.03]">
+                          <Icon className="h-4 w-4 text-white/55" />
+                        </div>
+
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-white/85">
+                            {service.name}
+                          </p>
+
+                          <p className="mt-0.5 truncate text-xs text-white/35">
+                            {service.description}
+                          </p>
+                        </div>
                       </div>
 
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-white/85">
-                          {service.name}
-                        </p>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            isOffline
+                              ? "bg-red-400"
+                              : isChecking
+                                ? "bg-white/40"
+                                : "bg-emerald-400"
+                          }`}
+                        />
 
-                        <p className="mt-0.5 truncate text-xs text-white/35">
-                          {service.description}
-                        </p>
+                        <span
+                          className={`text-xs ${
+                            isOffline
+                              ? "text-red-300/70"
+                              : isChecking
+                                ? "text-white/35"
+                                : "text-white/45"
+                          }`}
+                        >
+                          {service.status}
+                        </span>
                       </div>
                     </div>
-
-                    <div className="flex shrink-0 items-center gap-2">
-                      <span
-                        className={`h-1.5 w-1.5 rounded-full ${
-                          isOffline
-                            ? "bg-red-400"
-                            : isChecking
-                              ? "bg-white/40"
-                              : "bg-emerald-400"
-                        }`}
-                      />
-
-                      <span
-                        className={`text-xs ${
-                          isOffline
-                            ? "text-red-300/70"
-                            : isChecking
-                              ? "text-white/35"
-                              : "text-white/45"
-                        }`}
-                      >
-                        {service.status}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                },
+              )}
             </div>
           </section>
 
-          {/* Resources */}
-          <section className="rounded-2xl border border-white/[0.08] bg-white/[0.025]">
+          <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.025]">
             <div className="border-b border-white/[0.07] px-5 py-4">
-              <p className="text-sm font-semibold text-white">
+              <p className="text-sm font-semibold">
                 Environment Resources
               </p>
 
@@ -694,45 +798,47 @@ export default function ProductionPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-px bg-white/[0.05]">
-              {resources.map((resource) => {
-                const Icon = resource.icon;
+              {resources.map(
+                (resource) => {
+                  const Icon =
+                    resource.icon;
 
-                return (
-                  <div
-                    key={resource.name}
-                    className="bg-[#08090a] p-4"
-                  >
-                    <div className="mb-4 flex items-center justify-between">
-                      <Icon className="h-4 w-4 text-white/40" />
+                  return (
+                    <div
+                      key={resource.name}
+                      className="bg-[#08090a] p-4"
+                    >
+                      <div className="mb-4 flex items-center justify-between">
+                        <Icon className="h-4 w-4 text-white/40" />
 
-                      <span className="text-[10px] uppercase tracking-[0.14em] text-white/25">
-                        Resource
-                      </span>
+                        <span className="text-[10px] uppercase tracking-[0.14em] text-white/25">
+                          Resource
+                        </span>
+                      </div>
+
+                      <p className="text-xl font-semibold tracking-[-0.03em]">
+                        {resource.value}
+                      </p>
+
+                      <p className="mt-1 text-xs font-medium text-white/60">
+                        {resource.name}
+                      </p>
+
+                      <p className="mt-1 text-[11px] text-white/30">
+                        {resource.description}
+                      </p>
                     </div>
-
-                    <p className="text-xl font-semibold tracking-[-0.03em] text-white">
-                      {resource.value}
-                    </p>
-
-                    <p className="mt-1 text-xs font-medium text-white/60">
-                      {resource.name}
-                    </p>
-
-                    <p className="mt-1 text-[11px] text-white/30">
-                      {resource.description}
-                    </p>
-                  </div>
-                );
-              })}
+                  );
+                },
+              )}
             </div>
           </section>
         </div>
 
-        {/* Runtime Activity */}
-        <section className="mb-6 rounded-2xl border border-white/[0.08] bg-white/[0.025]">
+        <section className="mb-6 overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.025]">
           <div className="flex items-center justify-between border-b border-white/[0.07] px-5 py-4">
             <div>
-              <p className="text-sm font-semibold text-white">
+              <p className="text-sm font-semibold">
                 Runtime Activity
               </p>
 
@@ -767,7 +873,10 @@ export default function ProductionPage() {
                   icon={ShieldCheck}
                   title={`Policy ${latestRun.policy.policy_id} evaluated`}
                   detail={`${latestRun.policy.action} · ${latestRun.policy.risk} risk`}
-                  value={latestRun.policy.decision}
+                  value={
+                    latestRun.policy
+                      .decision
+                  }
                 />
               )}
 
@@ -775,22 +884,36 @@ export default function ProductionPage() {
                 <ActivityRow
                   icon={Workflow}
                   title={`Controlled tool ${latestRun.tool.tool}`}
-                  detail={latestRun.tool.message}
-                  value={latestRun.tool.success ? "success" : "failed"}
+                  detail={
+                    latestRun.tool.message
+                  }
+                  value={
+                    latestRun.tool.success
+                      ? "success"
+                      : "failed"
+                  }
                 />
               )}
 
               {latestRun.verification && (
                 <ActivityRow
                   icon={
-                    latestRun.verification.verified
+                    latestRun
+                      .verification
+                      .verified
                       ? CheckCircle2
                       : XCircle
                   }
                   title="Verification completed"
-                  detail={latestRun.verification.message}
+                  detail={
+                    latestRun
+                      .verification
+                      .message
+                  }
                   value={
-                    latestRun.verification.verified
+                    latestRun
+                      .verification
+                      .verified
                       ? "verified"
                       : "mismatch"
                   }
@@ -799,14 +922,14 @@ export default function ProductionPage() {
             </div>
           ) : (
             <div className="px-5 py-8 text-xs text-white/25">
-              No runtime activity is available yet. Execute an agent request
-              to populate this section.
+              No runtime activity is available yet.
+              Execute an agent request to populate this
+              section.
             </div>
           )}
         </section>
 
-        {/* Execution Readiness */}
-        <section className="rounded-2xl border border-white/[0.08] bg-white/[0.025]">
+        <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.025]">
           <div className="grid gap-6 p-5 lg:grid-cols-[1fr_auto] lg:items-center">
             <div>
               <div className="mb-2 flex items-center gap-2">
@@ -814,16 +937,18 @@ export default function ProductionPage() {
                   <ShieldCheck className="h-4 w-4 text-white/60" />
                 </div>
 
-                <p className="text-sm font-semibold text-white">
+                <p className="text-sm font-semibold">
                   Autonomous Execution Readiness
                 </p>
               </div>
 
               <p className="max-w-2xl text-xs leading-5 text-white/35">
-                Phoenix operates through controlled workflows where requests
-                are understood, knowledge is retrieved, IT state is observed,
-                actions are evaluated against policy, tools are executed under
-                control, and results are verified before resolution.
+                Phoenix operates through controlled workflows
+                where requests are understood, knowledge is
+                retrieved, IT state is observed, actions are
+                evaluated against policy, tools are executed
+                under control, and results are verified before
+                resolution.
               </p>
 
               <div className="mt-4 flex flex-wrap gap-2">
@@ -835,14 +960,16 @@ export default function ProductionPage() {
                   "Policy",
                   "Tools",
                   "Verification",
-                ].map((item) => (
-                  <span
-                    key={item}
-                    className="rounded-md border border-white/[0.07] bg-white/[0.025] px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] text-white/35"
-                  >
-                    {item}
-                  </span>
-                ))}
+                ].map(
+                  (item) => (
+                    <span
+                      key={item}
+                      className="rounded-md border border-white/[0.07] bg-white/[0.025] px-2.5 py-1.5 text-[10px] uppercase tracking-[0.12em] text-white/35"
+                    >
+                      {item}
+                    </span>
+                  ),
+                )}
               </div>
             </div>
 
@@ -862,7 +989,9 @@ export default function ProductionPage() {
             Phoenix IT Helpdesk · Production Environment · Prototype Runtime
           </span>
 
-          <span>FastAPI · Next.js · Controlled Agent Architecture</span>
+          <span>
+            FastAPI · Next.js · Controlled Agent Architecture
+          </span>
         </footer>
       </div>
     </div>
@@ -879,7 +1008,9 @@ function Metric({
   label: string;
   value: string;
   detail: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ComponentType<{
+    className?: string;
+  }>;
   status: BackendStatus;
 }) {
   return (
@@ -893,7 +1024,7 @@ function Metric({
       </div>
 
       <div className="flex items-center gap-2">
-        <p className="text-xl font-semibold tracking-[-0.03em] text-white">
+        <p className="text-xl font-semibold tracking-[-0.03em]">
           {value}
         </p>
 
@@ -908,7 +1039,9 @@ function Metric({
         />
       </div>
 
-      <p className="mt-1 truncate text-xs text-white/30">{detail}</p>
+      <p className="mt-1 truncate text-xs text-white/30">
+        {detail}
+      </p>
     </div>
   );
 }
@@ -921,7 +1054,9 @@ function HealthItem({
   healthy,
   warning,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ComponentType<{
+    className?: string;
+  }>;
   title: string;
   status: string;
   description: string;
@@ -964,7 +1099,9 @@ function HealthItem({
         </span>
       </div>
 
-      <p className="text-sm font-medium text-white/80">{title}</p>
+      <p className="text-sm font-medium text-white/80">
+        {title}
+      </p>
 
       <p className="mt-1.5 break-all text-xs leading-5 text-white/30">
         {description}
@@ -1019,7 +1156,9 @@ function ActivityRow({
   detail,
   value,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ComponentType<{
+    className?: string;
+  }>;
   title: string;
   detail: string;
   value: string;
@@ -1032,7 +1171,9 @@ function ActivityRow({
         </div>
 
         <div className="min-w-0">
-          <p className="truncate text-sm text-white/75">{title}</p>
+          <p className="truncate text-sm text-white/75">
+            {title}
+          </p>
 
           <p className="mt-0.5 truncate text-xs text-white/30">
             {detail}

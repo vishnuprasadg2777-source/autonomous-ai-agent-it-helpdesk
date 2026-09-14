@@ -76,8 +76,8 @@ const pipeline = [
     icon: Cpu,
   },
   {
-    id: "control",
-    label: "Control",
+    id: "policy",
+    label: "Policy",
     icon: ShieldCheck,
   },
   {
@@ -92,11 +92,26 @@ const pipeline = [
   },
 ];
 
+const stageMapping: Record<string, string> = {
+  understand: "understand",
+  retrieve: "retrieve",
+  observe: "observe",
+  reason: "reason",
+  policy: "policy",
+  execute: "execute",
+  verify: "verify",
+};
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export default function AgentPage() {
   const [request, setRequest] = useState("");
   const [ticketId, setTicketId] = useState("INC-1042");
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<AgentRunResponse | null>(null);
+  const [displayedStageCount, setDisplayedStageCount] = useState(0);
   const [error, setError] = useState("");
 
   const selectedSuggestion = useMemo(
@@ -119,6 +134,7 @@ export default function AgentPage() {
     setRunning(true);
     setError("");
     setResult(null);
+    setDisplayedStageCount(0);
 
     try {
       const response = await runAgent({
@@ -126,20 +142,47 @@ export default function AgentPage() {
         ticket_id: ticketId,
       });
 
-      setResult(response);
+      /*
+       * The backend returns the completed execution trace.
+       * The frontend replays that verified trace sequentially so
+       * the prototype visibly demonstrates the agent lifecycle.
+       */
+      const validStages = response.stages.filter(
+        (stage) =>
+          stage.status === "completed" ||
+          stage.status === "blocked" ||
+          stage.status === "running",
+      );
 
-     window.localStorage.setItem(
-  "autonomous-it:last-agent-run",
-  JSON.stringify(response),
-);
+      for (let index = 0; index < validStages.length; index += 1) {
+        setDisplayedStageCount(index + 1);
+        await sleep(index === 0 ? 650 : 800);
+      }
 
-window.dispatchEvent(new Event("autonomous-it:agent-run"));
+      setResult({
+        ...response,
+        stages: response.stages.map((stage) => ({
+          ...stage,
+          status:
+            stage.status === "blocked"
+              ? "blocked"
+              : "completed",
+        })),
+      });
+
+      window.localStorage.setItem(
+        "autonomous-it:last-agent-run",
+        JSON.stringify(response),
+      );
+
+      window.dispatchEvent(new Event("autonomous-it:agent-run"));
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
           : "Unable to connect to the agent service.",
       );
+      setDisplayedStageCount(0);
     } finally {
       setRunning(false);
     }
@@ -151,29 +194,38 @@ window.dispatchEvent(new Event("autonomous-it:agent-run"));
     setTicketId(suggestion.ticketId);
     setRequest(suggestion.request);
     setError("");
+    setResult(null);
+    setDisplayedStageCount(0);
   };
 
   const clearRun = () => {
     setResult(null);
     setError("");
+    setDisplayedStageCount(0);
   };
 
   const getStageStatus = (id: string) => {
+    const pipelineIndex = pipeline.findIndex(
+      (stage) => stage.id === id,
+    );
+
+    if (running) {
+      if (pipelineIndex < displayedStageCount - 1) {
+        return "completed";
+      }
+
+      if (pipelineIndex === displayedStageCount - 1) {
+        return "running";
+      }
+
+      return "pending";
+    }
+
     if (!result) {
       return "pending";
     }
 
-    const mapping: Record<string, string> = {
-      understand: "understand",
-      retrieve: "retrieve",
-      observe: "observe",
-      reason: "reason",
-      control: "policy",
-      execute: "execute",
-      verify: "verify",
-    };
-
-    const stageId = mapping[id];
+    const stageId = stageMapping[id];
 
     const stage = result.stages.find(
       (item) => item.id === stageId,
@@ -182,15 +234,13 @@ window.dispatchEvent(new Event("autonomous-it:agent-run"));
     return stage?.status ?? "completed";
   };
 
-  const activePipelineIndex = result
-    ? Math.max(
-        0,
-        pipeline.findIndex((stage) => {
-          const status = getStageStatus(stage.id);
-          return status === "running" || status === "pending";
-        }),
-      )
+  const activePipelineIndex = running
+    ? Math.max(0, displayedStageCount - 1)
     : -1;
+
+  const visibleStages = running
+    ? result?.stages.slice(0, displayedStageCount) ?? []
+    : result?.stages ?? [];
 
   return (
     <div className="min-h-full bg-[#060708] text-zinc-200">
@@ -322,6 +372,7 @@ window.dispatchEvent(new Event("autonomous-it:agent-run"));
               <div className="flex flex-col justify-between gap-3 border-t border-white/[0.05] px-4 py-3 sm:flex-row sm:items-center">
                 <div className="flex items-center gap-2 text-[8px] text-zinc-700">
                   <Lock className="h-3 w-3" />
+
                   <span>
                     Execution is governed by policy and verification
                   </span>
@@ -425,10 +476,17 @@ window.dispatchEvent(new Event("autonomous-it:agent-run"));
                       label={stage.label}
                       completed={completed}
                       active={active}
+                      pending={status === "pending"}
                     />
 
                     {index < pipeline.length - 1 && (
-                      <ArrowRight className="h-3 w-3 shrink-0 text-zinc-800" />
+                      <ArrowRight
+                        className={`h-3 w-3 shrink-0 transition-colors duration-500 ${
+                          completed
+                            ? "text-emerald-300/30"
+                            : "text-zinc-800"
+                        }`}
+                      />
                     )}
                   </div>
                 );
@@ -454,14 +512,29 @@ window.dispatchEvent(new Event("autonomous-it:agent-run"));
             </div>
 
             <div className="divide-y divide-white/[0.05]">
-              {result ? (
-                result.stages.map((stage, index) => (
-                  <ExecutionStageRow
-                    key={stage.id}
-                    stage={stage}
-                    index={index}
+              {result || running ? (
+                visibleStages.length > 0 ? (
+                  visibleStages.map((stage, index) => (
+                    <ExecutionStageRow
+                      key={stage.id}
+                      stage={
+                        running && index === displayedStageCount - 1
+                          ? {
+                              ...stage,
+                              status: "running",
+                            }
+                          : stage
+                      }
+                      index={index}
+                    />
+                  ))
+                ) : (
+                  <EmptyState
+                    icon={Activity}
+                    title="Initializing agent"
+                    description="The agent is preparing the execution trace."
                   />
-                ))
+                )
               ) : (
                 <EmptyState
                   icon={Activity}
@@ -590,54 +663,69 @@ function PipelineNode({
   label,
   completed,
   active,
+  pending,
 }: {
   icon: typeof Activity;
   label: string;
   completed: boolean;
   active: boolean;
+  pending: boolean;
 }) {
   return (
-    <div
-      className={`flex min-w-[92px] flex-col items-center gap-2 rounded-lg border px-3 py-3 ${
+    <motion.div
+      animate={{
+        scale: active ? 1.025 : 1,
+      }}
+      transition={{ duration: 0.3 }}
+      className={`flex min-w-[92px] flex-col items-center gap-2 rounded-lg border px-3 py-3 transition-all duration-500 ${
         completed
           ? "border-emerald-300/[0.08] bg-emerald-300/[0.025]"
           : active
-            ? "border-indigo-300/[0.1] bg-indigo-300/[0.025]"
+            ? "border-indigo-300/[0.14] bg-indigo-300/[0.045]"
             : "border-white/[0.05] bg-white/[0.012]"
       }`}
     >
-      <div className="flex h-7 w-7 items-center justify-center rounded-md border border-white/[0.05] bg-white/[0.018]">
+      <div
+        className={`relative flex h-7 w-7 items-center justify-center rounded-md border transition-all duration-500 ${
+          active
+            ? "border-indigo-300/[0.14] bg-indigo-300/[0.06]"
+            : "border-white/[0.05] bg-white/[0.018]"
+        }`}
+      >
         {completed ? (
           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300/60" />
+        ) : active ? (
+          <RefreshCw className="h-3.5 w-3.5 animate-spin text-indigo-200/70" />
         ) : (
           <Icon
             className={`h-3.5 w-3.5 ${
-              active
-                ? "text-indigo-200/70"
-                : "text-zinc-700"
+              pending ? "text-zinc-800" : "text-zinc-700"
             }`}
           />
+        )}
+
+        {active && (
+          <span className="absolute inset-0 rounded-md border border-indigo-300/[0.08] animate-pulse" />
         )}
       </div>
 
       <span
-        className={`text-[8px] font-medium ${
+        className={`text-[8px] font-medium transition-colors duration-500 ${
           completed
             ? "text-emerald-300/60"
             : active
-              ? "text-indigo-200/70"
+              ? "text-indigo-200/80"
               : "text-zinc-600"
         }`}
       >
         {label}
       </span>
-    </div>
+    </motion.div>
   );
 }
 
 function ExecutionStageRow({
   stage,
-  index,
 }: {
   stage: AgentStage;
   index: number;
@@ -648,10 +736,12 @@ function ExecutionStageRow({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 3 }}
+      initial={{ opacity: 0, y: 5 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, delay: index * 0.025 }}
-      className="flex items-start gap-3 px-5 py-4"
+      transition={{ duration: 0.25 }}
+      className={`flex items-start gap-3 px-5 py-4 ${
+        running ? "bg-indigo-300/[0.018]" : ""
+      }`}
     >
       <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/[0.05] bg-white/[0.018]">
         {completed ? (
@@ -671,8 +761,18 @@ function ExecutionStageRow({
             {stage.label}
           </p>
 
-          <span className="rounded-full border border-white/[0.05] px-2 py-0.5 text-[7px] text-zinc-700">
-            {stage.status}
+          <span
+            className={`rounded-full border px-2 py-0.5 text-[7px] ${
+              running
+                ? "border-indigo-300/[0.1] text-indigo-200/60"
+                : completed
+                  ? "border-emerald-300/[0.07] text-emerald-300/50"
+                  : blocked
+                    ? "border-red-300/[0.08] text-red-300/60"
+                    : "border-white/[0.05] text-zinc-700"
+            }`}
+          >
+            {running ? "running" : stage.status}
           </span>
 
           {stage.duration && (
@@ -768,7 +868,13 @@ function WorldStatePanel({
                   {key.replaceAll("_", " ")}
                 </p>
 
-                <p className="mt-1 text-[9px] font-medium text-emerald-300/60">
+                <p
+                  className={`mt-1 text-[9px] font-medium ${
+                    key === "vpn_client" && value === "disconnected"
+                      ? "text-amber-300/60"
+                      : "text-emerald-300/60"
+                  }`}
+                >
                   {value}
                 </p>
               </div>

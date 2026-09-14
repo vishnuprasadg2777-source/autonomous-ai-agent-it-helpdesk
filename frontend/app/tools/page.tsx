@@ -154,13 +154,22 @@ const executionHistory = [
   },
 ];
 
-const categories = ["All", "Observation", "Remediation", "Identity", "Endpoint", "Access"];
+const categories = [
+  "All",
+  "Observation",
+  "Remediation",
+  "Identity",
+  "Endpoint",
+  "Access",
+];
 
 export default function ToolsPage() {
   const [selectedId, setSelectedId] = useState("restart_vpn_client");
   const [category, setCategory] = useState("All");
   const [executing, setExecuting] = useState(false);
-  const [executionResult, setExecutionResult] = useState<string | null>(null);
+  const [executionResult, setExecutionResult] = useState<string | null>(
+    null,
+  );
 
   const filteredTools = useMemo(() => {
     if (category === "All") {
@@ -186,6 +195,28 @@ export default function ToolsPage() {
   const blockedCount = tools.filter(
     (tool) => tool.decision === "blocked",
   ).length;
+
+  const selectCategory = (value: string) => {
+    setCategory(value);
+    setExecutionResult(null);
+
+    const matchingTools =
+      value === "All"
+        ? tools
+        : tools.filter((tool) => tool.category === value);
+
+    if (
+      matchingTools.length > 0 &&
+      !matchingTools.some((tool) => tool.id === selectedId)
+    ) {
+      setSelectedId(matchingTools[0].id);
+    }
+  };
+
+  const selectTool = (toolId: string) => {
+    setSelectedId(toolId);
+    setExecutionResult(null);
+  };
 
   const executeTool = () => {
     if (executing || selectedTool.decision !== "allowed") {
@@ -221,7 +252,7 @@ export default function ToolsPage() {
               </div>
 
               <h1 className="text-[25px] font-medium tracking-[-0.03em] text-zinc-100">
-                Tools
+                Tool Center
               </h1>
 
               <p className="mt-2 max-w-2xl text-[11px] leading-5 text-zinc-600">
@@ -360,7 +391,7 @@ export default function ToolsPage() {
                   <button
                     key={item}
                     type="button"
-                    onClick={() => setCategory(item)}
+                    onClick={() => selectCategory(item)}
                     className={`rounded-md border px-2.5 py-1.5 text-[8px] transition ${
                       category === item
                         ? "border-indigo-300/[0.12] bg-indigo-300/[0.04] text-indigo-200/70"
@@ -380,12 +411,19 @@ export default function ToolsPage() {
                   tool={tool}
                   index={index}
                   selected={selectedId === tool.id}
-                  onClick={() => {
-                    setSelectedId(tool.id);
-                    setExecutionResult(null);
-                  }}
+                  onClick={() => selectTool(tool.id)}
                 />
               ))}
+
+              {filteredTools.length === 0 && (
+                <div className="px-5 py-12 text-center">
+                  <Wrench className="mx-auto h-4 w-4 text-zinc-800" />
+
+                  <p className="mt-3 text-[9px] text-zinc-600">
+                    No tools in this category.
+                  </p>
+                </div>
+              )}
             </div>
           </section>
 
@@ -426,7 +464,7 @@ export default function ToolsPage() {
                 <DecisionBadge decision={selectedTool.decision} />
               </div>
 
-              {/* EXECUTION TARGET */}
+              {/* GATEWAY TARGET */}
               <div className="mt-6 rounded-lg border border-white/[0.06] bg-black/15 p-4">
                 <div className="flex items-center justify-between">
                   <p className="text-[7px] uppercase tracking-[0.12em] text-zinc-700">

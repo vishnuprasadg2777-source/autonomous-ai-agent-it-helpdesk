@@ -147,15 +147,29 @@ function normalizeDecision(
   return decision;
 }
 
+function decisionTitle(decision: PolicyDecision) {
+  if (decision === "allowed") {
+    return "Action allowed";
+  }
+
+  if (decision === "approval_required") {
+    return "Human approval required";
+  }
+
+  return "Action blocked";
+}
+
 export default function PoliciesPage() {
   const [latestRun, setLatestRun] = useState<AgentRunResponse | null>(null);
   const [selectedId, setSelectedId] = useState("POL-002");
   const [filter, setFilter] = useState("All");
   const [evaluating, setEvaluating] = useState(false);
+  const [evaluationComplete, setEvaluationComplete] = useState(false);
 
   useEffect(() => {
     const load = () => {
       const run = loadLatestRun();
+
       setLatestRun(run);
 
       if (run?.policy?.policy_id) {
@@ -225,10 +239,38 @@ export default function PoliciesPage() {
     }
 
     setEvaluating(true);
+    setEvaluationComplete(false);
 
     window.setTimeout(() => {
       setEvaluating(false);
+      setEvaluationComplete(true);
     }, 900);
+  };
+
+  const selectFilter = (value: string) => {
+    setFilter(value);
+
+    const matchingPolicies =
+      value === "All"
+        ? policies
+        : policies.filter((policy) => {
+            if (value === "Allowed") {
+              return policy.decision === "allowed";
+            }
+
+            if (value === "Approval Required") {
+              return policy.decision === "approval_required";
+            }
+
+            return policy.decision === "blocked";
+          });
+
+    if (
+      matchingPolicies.length > 0 &&
+      !matchingPolicies.some((policy) => policy.id === selectedId)
+    ) {
+      setSelectedId(matchingPolicies[0].id);
+    }
   };
 
   return (
@@ -282,7 +324,7 @@ export default function PoliciesPage() {
       </div>
 
       <main className="mx-auto max-w-[1500px] space-y-5 px-6 py-6 lg:px-8">
-        {/* POLICY METRICS */}
+        {/* METRICS */}
         <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.05] md:grid-cols-4">
           <PolicyMetric
             icon={Shield}
@@ -343,44 +385,56 @@ export default function PoliciesPage() {
           </div>
 
           {livePolicy ? (
-            <div className="grid gap-px bg-white/[0.04] md:grid-cols-6">
-              <LiveAttribute
-                label="Ticket"
-                value={latestRun?.ticket_id ?? "—"}
-                mono
-              />
+            <>
+              <div className="grid gap-px bg-white/[0.04] md:grid-cols-6">
+                <LiveAttribute
+                  label="Ticket"
+                  value={latestRun?.ticket_id ?? "—"}
+                  mono
+                />
 
-              <LiveAttribute
-                label="Candidate action"
-                value={`${livePolicy.action}()`}
-                mono
-              />
+                <LiveAttribute
+                  label="Candidate action"
+                  value={`${livePolicy.action}()`}
+                  mono
+                />
 
-              <LiveAttribute
-                label="Policy"
-                value={livePolicy.id}
-                mono
-              />
+                <LiveAttribute
+                  label="Policy"
+                  value={livePolicy.id}
+                  mono
+                />
 
-              <LiveAttribute
-                label="Risk"
-                value={livePolicy.risk}
-              />
+                <LiveAttribute
+                  label="Risk"
+                  value={livePolicy.risk}
+                />
 
-              <LiveAttribute
-                label="Authorization"
-                value={
-                  livePolicy.authorizationRequired
-                    ? "Required"
-                    : "Not required"
-                }
-              />
+                <LiveAttribute
+                  label="Authorization"
+                  value={
+                    livePolicy.authorizationRequired
+                      ? "Required"
+                      : "Not required"
+                  }
+                />
 
-              <LiveAttribute
-                label="Decision"
-                value={decisionTitle(livePolicy.decision)}
-              />
-            </div>
+                <LiveAttribute
+                  label="Decision"
+                  value={decisionTitle(livePolicy.decision)}
+                />
+              </div>
+
+              <div className="border-t border-white/[0.05] px-5 py-4">
+                <span className="text-[7px] uppercase tracking-[0.12em] text-zinc-700">
+                  Agent policy reasoning
+                </span>
+
+                <p className="mt-2 text-[9px] leading-5 text-zinc-600">
+                  {livePolicy.reason}
+                </p>
+              </div>
+            </>
           ) : (
             <div className="px-5 py-6">
               <p className="text-[9px] text-zinc-600">
@@ -388,21 +442,9 @@ export default function PoliciesPage() {
               </p>
             </div>
           )}
-
-          {livePolicy ? (
-            <div className="border-t border-white/[0.05] px-5 py-4">
-              <span className="text-[7px] uppercase tracking-[0.12em] text-zinc-700">
-                Agent policy reasoning
-              </span>
-
-              <p className="mt-2 text-[9px] leading-5 text-zinc-600">
-                {livePolicy.reason}
-              </p>
-            </div>
-          ) : null}
         </section>
 
-        {/* POLICY DECISION FLOW */}
+        {/* DECISION FLOW */}
         <section className="overflow-hidden rounded-xl border border-white/[0.07] bg-[#0b0d0f]">
           <div className="border-b border-white/[0.06] px-5 py-4">
             <div className="flex items-center gap-2">
@@ -476,6 +518,7 @@ export default function PoliciesPage() {
                 <LockKeyhole className="h-3.5 w-3.5 text-zinc-700" />
               </div>
 
+              {/* FILTERS */}
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <Filter className="mr-1 h-3 w-3 text-zinc-800" />
 
@@ -483,7 +526,7 @@ export default function PoliciesPage() {
                   <button
                     key={item}
                     type="button"
-                    onClick={() => setFilter(item)}
+                    onClick={() => selectFilter(item)}
                     className={`rounded-md border px-2.5 py-1.5 text-[8px] transition ${
                       filter === item
                         ? "border-indigo-300/[0.12] bg-indigo-300/[0.04] text-indigo-200/70"
@@ -503,9 +546,22 @@ export default function PoliciesPage() {
                   policy={policy}
                   index={index}
                   selected={selectedId === policy.id}
-                  onClick={() => setSelectedId(policy.id)}
+                  onClick={() => {
+                    setSelectedId(policy.id);
+                    setEvaluationComplete(false);
+                  }}
                 />
               ))}
+
+              {filteredPolicies.length === 0 && (
+                <div className="px-5 py-12 text-center">
+                  <ShieldAlert className="mx-auto h-4 w-4 text-zinc-800" />
+
+                  <p className="mt-3 text-[9px] text-zinc-600">
+                    No policies match this decision filter.
+                  </p>
+                </div>
+              )}
             </div>
           </section>
 
@@ -610,12 +666,45 @@ export default function PoliciesPage() {
                 />
 
                 <PolicyAttribute
-                  label="Updated"
-                  value={selectedPolicy.updated}
+                  label="Owner"
+                  value={selectedPolicy.owner}
                 />
               </div>
 
-              {/* ACTION */}
+              {/* EVALUATION RESULT */}
+              {evaluationComplete && (
+                <motion.div
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`mt-4 rounded-lg border p-3 ${
+                    selectedPolicy.decision === "allowed"
+                      ? "border-emerald-300/[0.08] bg-emerald-300/[0.018]"
+                      : selectedPolicy.decision === "approval_required"
+                        ? "border-amber-300/[0.08] bg-amber-300/[0.018]"
+                        : "border-red-300/[0.08] bg-red-300/[0.018]"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <DecisionIcon
+                      decision={selectedPolicy.decision}
+                      small
+                    />
+
+                    <div>
+                      <p className="text-[8px] font-medium text-zinc-400">
+                        Evaluation complete
+                      </p>
+
+                      <p className="mt-1 text-[7px] text-zinc-700">
+                        {decisionTitle(selectedPolicy.decision)} ·{" "}
+                        {selectedPolicy.id}
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* EVALUATE */}
               <button
                 type="button"
                 onClick={evaluatePolicy}
@@ -629,7 +718,7 @@ export default function PoliciesPage() {
                 />
 
                 {evaluating
-                  ? "Evaluating policy..."
+                  ? "Evaluating authorization, risk & policy..."
                   : "Evaluate candidate action"}
               </button>
             </div>
@@ -693,7 +782,7 @@ export default function PoliciesPage() {
           </div>
         </section>
 
-        {/* AUDIT NOTE */}
+        {/* GOVERNANCE NOTE */}
         <section className="rounded-xl border border-white/[0.06] bg-[#090b0d] p-4">
           <div className="flex items-start gap-3">
             <Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-zinc-700" />
@@ -704,9 +793,9 @@ export default function PoliciesPage() {
               </p>
 
               <p className="mt-1 text-[8px] leading-5 text-zinc-700">
-                The agent does not execute an action merely because the
-                action is technically available. Authorization, risk and
-                policy are evaluated before the tool gateway is reached.
+                The agent does not execute an action merely because the action
+                is technically available. Authorization, risk and policy are
+                evaluated before the tool gateway is reached.
               </p>
             </div>
           </div>
@@ -1036,16 +1125,4 @@ function LiveAttribute({
       </p>
     </div>
   );
-}
-
-function decisionTitle(decision: PolicyDecision) {
-  if (decision === "allowed") {
-    return "Action allowed";
-  }
-
-  if (decision === "approval_required") {
-    return "Human approval required";
-  }
-
-  return "Action blocked";
 }

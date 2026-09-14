@@ -955,7 +955,6 @@ function buildLiveAuditEvents(
     type: "request",
     title: "Request received",
     description:
-      result.message ||
       "User request entered the autonomous helpdesk workflow.",
     actor: "End user",
     risk: "low",
