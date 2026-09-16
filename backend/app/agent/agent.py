@@ -61,6 +61,18 @@ class AgentStage(BaseModel):
     duration: str | None = None
 
 
+class AgentTrace(BaseModel):
+    """
+    Human-readable execution trace for the autonomous workflow.
+    """
+
+    attempt: int
+    stage: str
+    action: str | None = None
+    status: str
+    message: str
+
+
 class AgentResponse(BaseModel):
     ticket_id: str
     status: AgentStatus
@@ -73,6 +85,7 @@ class AgentResponse(BaseModel):
     policy: dict[str, Any] | None = None
     tool: dict[str, Any] | None = None
     verification: dict[str, Any] | None = None
+    trace: list[AgentTrace] = []
 
 
 STAGE_DEFINITIONS = [
@@ -185,6 +198,29 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
     ticket_id = payload.ticket_id or "INC-DEMO"
 
     # =====================================================
+    # EXECUTION TRACE
+    # =====================================================
+
+    trace: list[AgentTrace] = []
+    attempt = 1
+
+    def add_trace(
+        stage: str,
+        status: str,
+        message: str,
+        action: str | None = None,
+    ) -> None:
+        trace.append(
+            AgentTrace(
+                attempt=attempt,
+                stage=stage,
+                action=action,
+                status=status,
+                message=message,
+            )
+        )
+
+    # =====================================================
     # 1. REQUEST UNDERSTANDING
     # =====================================================
 
@@ -197,6 +233,15 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
         "entities": understanding.entities,
         "confidence": understanding.confidence,
     }
+
+    add_trace(
+        stage="understand",
+        status="completed",
+        message=(
+            f"Request understood as '{understanding.intent}' "
+            f"with category '{understanding.category}'."
+        ),
+    )
 
     # =====================================================
     # 2. KNOWLEDGE RETRIEVAL
@@ -218,6 +263,15 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
         }
         for source in knowledge_sources
     ]
+
+    add_trace(
+        stage="retrieve",
+        status="completed",
+        message=(
+            f"Retrieved {len(retrieved_knowledge)} relevant "
+            "knowledge-base source(s)."
+        ),
+    )
 
     # =====================================================
     # 3. IT STATE OBSERVATION
@@ -244,6 +298,12 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
     if resource_name:
         it_state_dict["requested_resource"] = resource_name
 
+    add_trace(
+        stage="observe",
+        status="completed",
+        message="Current IT environment state was observed.",
+    )
+
     # =====================================================
     # 4. REASONING & PLANNING
     # =====================================================
@@ -256,6 +316,15 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
     )
 
     if plan is None:
+        add_trace(
+            stage="reason",
+            status="blocked",
+            message=(
+                "No safe remediation plan could be generated. "
+                "Escalation required."
+            ),
+        )
+
         update_ticket_status(ticket_id, "open")
 
         return AgentResponse(
@@ -277,9 +346,20 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             understanding=understanding_dict,
             retrieved_knowledge=retrieved_knowledge,
             it_state=it_state_dict,
+            trace=trace,
         )
 
     plan_dict = plan_to_dict(plan)
+
+    add_trace(
+        stage="reason",
+        status="completed",
+        action=plan.action,
+        message=(
+            f"Candidate action '{plan.action}' generated with "
+            f"risk '{plan.risk}' and confidence {plan.confidence:.2f}."
+        ),
+    )
 
     # =====================================================
     # 5. POLICY / AUTHORIZATION / RISK
@@ -295,6 +375,16 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
     policy_dict = policy_to_dict(policy)
 
     if policy.decision == "blocked":
+        add_trace(
+            stage="policy",
+            status="blocked",
+            action=plan.action,
+            message=(
+                f"Policy blocked action '{plan.action}'. "
+                "Human IT intervention is required."
+            ),
+        )
+
         update_ticket_status(ticket_id, "open")
 
         return AgentResponse(
@@ -319,9 +409,20 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             it_state=it_state_dict,
             plan=plan_dict,
             policy=policy_dict,
+            trace=trace,
         )
 
     if policy.decision == "approval_required":
+        add_trace(
+            stage="policy",
+            status="blocked",
+            action=plan.action,
+            message=(
+                f"Action '{plan.action}' requires administrator approval "
+                "before execution."
+            ),
+        )
+
         update_ticket_status(ticket_id, "waiting")
 
         return AgentResponse(
@@ -346,13 +447,74 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             it_state=it_state_dict,
             plan=plan_dict,
             policy=policy_dict,
+            trace=trace,
         )
+
+    add_trace(
+        stage="policy",
+        status="completed",
+        action=plan.action,
+        message=(
+            f"Policy allowed action '{plan.action}' "
+            f"with risk level '{plan.risk}'."
+        ),
+    )
 
     # =====================================================
     # 6. CONTROLLED TOOL EXECUTION
     # =====================================================
 
-    update_ticket_status(ticket_id, "verifying")
+    ticket_update_success = update_ticket_status(
+        ticket_id,
+        "verifying",
+    )
+
+    if not ticket_update_success:
+        add_trace(
+            stage="execute",
+            status="blocked",
+            action=plan.action,
+            message=(
+                "The ticket could not be moved to the verifying state. "
+                "Execution was stopped safely."
+            ),
+        )
+
+        return AgentResponse(
+            ticket_id=ticket_id,
+            status="escalated",
+            message=(
+                "The ticket status could not be updated before execution. "
+                "The action was not executed."
+            ),
+            stages=make_stages(
+                current_stage="execute",
+                completed_stages={
+                    "understand",
+                    "retrieve",
+                    "observe",
+                    "reason",
+                    "policy",
+                },
+                blocked_stage="execute",
+            ),
+            understanding=understanding_dict,
+            retrieved_knowledge=retrieved_knowledge,
+            it_state=it_state_dict,
+            plan=plan_dict,
+            policy=policy_dict,
+            trace=trace,
+        )
+
+    add_trace(
+        stage="execute",
+        status="running",
+        action=plan.action,
+        message=(
+            f"Executing approved action '{plan.action}' "
+            "through the controlled tool gateway."
+        ),
+    )
 
     tool_result = execute_tool(
         plan.action,
@@ -362,6 +524,16 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
     tool_dict = tool_result_to_dict(tool_result)
 
     if not tool_result.success:
+        add_trace(
+            stage="execute",
+            status="blocked",
+            action=plan.action,
+            message=(
+                "The controlled tool gateway could not complete "
+                "the approved action."
+            ),
+        )
+
         update_ticket_status(ticket_id, "open")
 
         return AgentResponse(
@@ -388,7 +560,17 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             plan=plan_dict,
             policy=policy_dict,
             tool=tool_dict,
+            trace=trace,
         )
+
+    add_trace(
+        stage="execute",
+        status="completed",
+        action=plan.action,
+        message=(
+            f"Controlled action '{plan.action}' executed successfully."
+        ),
+    )
 
     # =====================================================
     # 7. UPDATE WORLD MODEL AFTER TOOL EXECUTION
@@ -401,9 +583,29 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
         timezone.utc
     ).isoformat()
 
+    add_trace(
+        stage="observe",
+        status="completed",
+        action=plan.action,
+        message=(
+            "Post-action IT state was constructed from the "
+            "observed state and tool state changes."
+        ),
+    )
+
     # =====================================================
     # 8. VERIFICATION
     # =====================================================
+
+    add_trace(
+        stage="verify",
+        status="running",
+        action=plan.action,
+        message=(
+            "Comparing expected IT state with the observed "
+            "post-action state."
+        ),
+    )
 
     verification = verify_state(
         expected_state=plan.expected_state,
@@ -413,6 +615,16 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
     verification_dict = verification_to_dict(verification)
 
     if not verification.verified:
+        add_trace(
+            stage="verify",
+            status="blocked",
+            action=plan.action,
+            message=(
+                "Verification failed because the expected IT state "
+                "was not confirmed."
+            ),
+        )
+
         update_ticket_status(ticket_id, "open")
 
         return AgentResponse(
@@ -441,7 +653,18 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             policy=policy_dict,
             tool=tool_dict,
             verification=verification_dict,
+            trace=trace,
         )
+
+    add_trace(
+        stage="verify",
+        status="completed",
+        action=plan.action,
+        message=(
+            "Verification succeeded. The observed IT state matches "
+            "the expected remediation state."
+        ),
+    )
 
     # =====================================================
     # 9. RESOLUTION
@@ -453,6 +676,16 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
     )
 
     if not ticket_updated:
+        add_trace(
+            stage="verify",
+            status="blocked",
+            action=plan.action,
+            message=(
+                "Remediation and verification succeeded, but the "
+                "resolved ticket status could not be persisted."
+            ),
+        )
+
         return AgentResponse(
             ticket_id=ticket_id,
             status="escalated",
@@ -481,7 +714,18 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             policy=policy_dict,
             tool=tool_dict,
             verification=verification_dict,
+            trace=trace,
         )
+
+    add_trace(
+        stage="verify",
+        status="completed",
+        action=plan.action,
+        message=(
+            "Ticket status persisted as resolved after successful "
+            "remediation and verification."
+        ),
+    )
 
     return AgentResponse(
         ticket_id=ticket_id,
@@ -510,6 +754,7 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
         policy=policy_dict,
         tool=tool_dict,
         verification=verification_dict,
+        trace=trace,
     )
 
 

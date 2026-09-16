@@ -49,10 +49,27 @@ def understand_request(request: str) -> UnderstandingResult:
     # Software extraction
     # ---------------------------------------------------------
     software_patterns = [
-        r"install\s+(?:the\s+)?([a-zA-Z0-9][a-zA-Z0-9._+-]{1,40})\s+(?:software|application)",
-        r"software\s+(?:called|named)\s+([a-zA-Z0-9][a-zA-Z0-9._+-]{1,40})",
-        r"application\s+(?:called|named)\s+([a-zA-Z0-9][a-zA-Z0-9._+-]{1,40})",
-        r"install\s+([a-zA-Z0-9][a-zA-Z0-9._+-]{1,40})\s+(?:on|onto)\s+(?:my|the)\s+(?:computer|device|laptop|pc)",
+        # Example:
+        # install Microsoft Teams
+        # install Microsoft Teams on my computer
+        r"\binstall\s+(?:the\s+)?(.+?)(?=\s+(?:on|onto)\s+(?:my|the)\s+(?:computer|device|laptop|pc)\b|[.,!?]|$)",
+
+        # Example:
+        # download Microsoft Teams
+        # download Microsoft Teams on my computer
+        r"\bdownload\s+(?:and\s+install\s+)?(?:the\s+)?(.+?)(?=\s+(?:on|onto)\s+(?:my|the)\s+(?:computer|device|laptop|pc)\b|[.,!?]|$)",
+
+        # Example:
+        # install Microsoft Teams software
+        r"\binstall\s+(?:the\s+)?(.+?)\s+(?:software|application)\b",
+
+        # Example:
+        # software called Microsoft Teams
+        r"\bsoftware\s+(?:called|named)\s+(.+?)(?=[.,!?]|$)",
+
+        # Example:
+        # application called Microsoft Teams
+        r"\bapplication\s+(?:called|named)\s+(.+?)(?=[.,!?]|$)",
     ]
 
     excluded_software_names = {
@@ -61,14 +78,27 @@ def understand_request(request: str) -> UnderstandingResult:
         "an",
         "on",
         "onto",
+        "in",
+        "for",
         "my",
         "computer",
         "device",
         "laptop",
         "pc",
+        "the computer",
+        "my computer",
+        "the device",
+        "my device",
+        "the laptop",
+        "my laptop",
+        "the pc",
+        "my pc",
         "approved",
         "software",
         "application",
+        "and",
+        "install",
+        "download",
     }
 
     for pattern in software_patterns:
@@ -77,9 +107,40 @@ def understand_request(request: str) -> UnderstandingResult:
         if match:
             candidate = match.group(1).strip().rstrip(".,!?")
 
-            if candidate not in excluded_software_names:
-                entities["software"] = candidate
-                break
+            # Normalize whitespace.
+            candidate = re.sub(r"\s+", " ", candidate)
+
+            # Remove common trailing context that may have been captured.
+            candidate = re.sub(
+                r"\s+(?:on|onto)\s+(?:my|the)\s+"
+                r"(?:computer|device|laptop|pc)$",
+                "",
+                candidate,
+                flags=re.IGNORECASE,
+            )
+
+            candidate = re.sub(
+                r"\s+(?:on|onto)\s+(?:my|the)$",
+                "",
+                candidate,
+                flags=re.IGNORECASE,
+            )
+
+            # Remove generic trailing software/application words.
+            candidate = re.sub(
+                r"\s+(?:software|application|program)$",
+                "",
+                candidate,
+                flags=re.IGNORECASE,
+            )
+
+            candidate = candidate.strip()
+
+            if candidate.lower() not in excluded_software_names:
+                if candidate:
+                    # Convert to readable title case.
+                    entities["software"] = candidate.title()
+                    break
 
     # Preserve approval context without inventing a software name.
     if (
@@ -201,12 +262,14 @@ def understand_request(request: str) -> UnderstandingResult:
     password_keywords = [
         "password reset",
         "reset my password",
+        "reset password",
         "forgot my password",
         "forgot password",
         "change my password",
         "password expired",
         "cannot remember my password",
         "can't remember my password",
+        "unable to remember my password",
     ]
 
     if any(keyword in text for keyword in password_keywords):
@@ -234,9 +297,26 @@ def understand_request(request: str) -> UnderstandingResult:
         "approved software",
         "approved application",
         "download and install",
+        "download software",
+        "download application",
+        "need to install",
+        "want to install",
+        "please install",
+        "can you install",
+        "could you install",
     ]
 
-    if any(keyword in text for keyword in software_keywords):
+    # Natural-language installation detection.
+    is_install_request = (
+        re.search(r"\binstall\b", text) is not None
+        or re.search(r"\binstallation\b", text) is not None
+        or re.search(r"\bdownload\s+and\s+install\b", text) is not None
+    )
+
+    if (
+        any(keyword in text for keyword in software_keywords)
+        or is_install_request
+    ):
         return UnderstandingResult(
             intent="install_software",
             category="Software",
