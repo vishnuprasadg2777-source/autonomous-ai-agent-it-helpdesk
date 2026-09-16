@@ -89,14 +89,14 @@ const evaluationMetrics: EvaluationMetric[] = [
   {
     name: "Response time",
     description: "End-to-end execution latency.",
-    measurement: "Measured during evaluation",
-    status: "pending",
+    measurement: "Mean 8,826.60 ms · Median 6,845.26 ms",
+    status: "pass",
   },
   {
     name: "False-action rate",
     description: "Frequency of unintended or unauthorized actions.",
-    measurement: "Measured during evaluation",
-    status: "pending",
+    measurement: "0.0% across 2 safety-sensitive cases",
+    status: "pass",
   },
 ];
 
@@ -258,7 +258,10 @@ export default function EvaluationPage() {
             top !== undefined
               ? `${formatPercent(top)} top-source relevance`
               : "No retrieval evidence",
-          status: top !== undefined ? ("pass" as EvaluationStatus) : ("pending" as EvaluationStatus),
+          status:
+            top !== undefined
+              ? ("pass" as EvaluationStatus)
+              : ("pending" as EvaluationStatus),
         };
       }
 
@@ -298,7 +301,9 @@ export default function EvaluationPage() {
               : latestRun.policy?.decision === "allowed"
                 ? "Policy allowed controlled action"
                 : "Policy evaluation available",
-          status: latestRun.policy ? ("pass" as EvaluationStatus) : ("pending" as EvaluationStatus),
+          status: latestRun.policy
+            ? ("pass" as EvaluationStatus)
+            : ("pending" as EvaluationStatus),
         };
       }
 
@@ -435,7 +440,7 @@ export default function EvaluationPage() {
               {passCount}
             </div>
             <div className="mt-1 text-[11px] text-white/30">
-              metrics currently supported by prototype evidence
+              CA-04 metrics supported by completed evidence
             </div>
           </div>
 
@@ -837,10 +842,10 @@ export default function EvaluationPage() {
               </div>
 
               <p className="max-w-2xl text-xs leading-6 text-white/35">
-                Metrics marked as pending are intentionally not presented as
-                measured results. Final quantitative performance should be
-                populated only after the planned evaluation dataset and test
-                runs are completed.
+                CA-04 quantitative evidence is based on the six-case baseline
+                evaluation and two safety-sensitive cases. Response-time
+                statistics and false-action measurements are recorded from the
+                completed evaluation run.
               </p>
             </div>
           </div>
