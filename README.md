@@ -1,409 +1,670 @@
-# Autonomous AI Agent for IT Helpdesk
-
+# PHOENIX IT HELPDESK
+## Autonomous AI Agent for IT Helpdesk
+An autonomous, policy-controlled AI agent for handling suitable Level-1 IT helpdesk requests through knowledge retrieval, IT-state observation, reasoning, policy evaluation, controlled tool execution, verification, persistence, and human escalation.
+---
 ## Project Information
-
 | Field | Details |
 |---|---|
 | Course | CSS7102 – Mini Project |
-| Review | Review 2 (CA-02) |
-| Project Title | Autonomous AI Agent for IT Helpdesk |
-| Problem Statement | PSAIAC_60 |
-| Team | CAI_28 |
+| Problem Statement | PSAIAC_60 – Autonomous AI Agent for IT Helpdesk |
+| Team | CAI_27 |
 | Project Guide | Mr. Parth Naik |
-| Program Project Coordinator | Ms. Suma N G |
-| School Project Coordinator | Dr. Sampath A K |
-| HoD | Zafar Ali Khan |
-
-## Team Members
-
-- Vishnu Prasad Gotur — 20221CAI0154
-- Shivaraj — 20231CAI0139
-
+| Program | B.Tech CSE (AI & ML) |
+| University | Presidency University |
+| Student | Vishnu Prasad Gotur — 20221CAI0154 |
+| Team Member | Shivaraj — 20231CAI0139 |
 ---
-
-## Project Overview
-
-The project proposes an autonomous AI agent for handling repetitive Level-1 IT helpdesk requests.
-
-The proposed system focuses on suitable routine requests such as:
-
-- Password resets
-- Software installation requests
-- Access requests
-- VPN troubleshooting
-
-The system is intended to combine:
-
-- Enterprise knowledge retrieval
-- IT state / World Model
-- LLM reasoning and planning
-- Candidate plan evaluation
-- Policy and authorization checks
-- Risk control
-- Controlled workflow/tool execution
-- Observation and verification
-- Human escalation
-
-The objective is to move beyond a conventional chatbot and investigate a controlled autonomous workflow for suitable IT helpdesk requests.
-
----
-
-## Problem Statement
-
-**PSAIAC_60**
-
-> IT teams spend 40% of time on repetitive L1 tickets. Industry needs an autonomous AI agent that resolves password resets, software installs, and access requests without human involvement.
-
----
-
-## AI Component
-
-The project incorporates an AI-based autonomous agent for understanding IT helpdesk requests, retrieving relevant enterprise knowledge, reasoning about possible resolutions, selecting suitable workflows, executing controlled actions, and verifying the resulting IT state.
-
-The LLM is used for natural-language understanding, reasoning and planning, while policy, authorization and controlled tool layers provide constraints around execution.
-
----
-
-# Review 2 – CA-02
-
-This repository contains the materials prepared for **CSS7102 Mini Project Review 2 (CA-02)**.
-
-Review 2 focuses on the **literature and model design of the proposed work**.
-
-## Review 2 Deliverables
-
-- Abstract
-- Objectives
-- Literature survey
-- Research gap
-- Existing methods and drawbacks
-- Proposed methodology
-- Proposed system architecture
-- Module description
-- Hardware and software details
-- Feasibility
-- Initial use cases
-- Project timeline / Gantt chart
-- IEEE-style references
-- Review-2 presentation
-
----
-
-## Final Literature Direction
-
-The Review 2 literature survey consists of the following ten selected papers:
-
-1. **IT Service Desk Model Literature Review: Benefits and Challenges**
-2. **Identifying Knowledge Management Challenges in a Service Desk: A Case Study**
-3. **Analysis of COBIT 5 Process “DSS02 - Manage Service Requests and Incidents” for the Service Desk Using Process Mining**
-4. **Self-Adaptive Large Language Model (LLM)-Based Multiagent Systems**
-5. **PrivacyAsst: Safeguarding User Privacy in Tool-Using Large Language Model Agents**
-6. **SIMA 2: A Generalist Embodied Agent for Virtual Worlds**
-7. **Evolving Deeper LLM Thinking**
-8. **Robust Agents Learn Causal World Models**
-9. **BrowseComp: A Benchmark for Browsing Agents**
-10. **How Agents Are Transforming Work**
-
-These papers provide the literature foundation across:
-
-- IT service-desk processes
-- Knowledge management
-- ITSM workflows
-- Autonomous and adaptive agents
-- Privacy and tool-use security
-- Goal-directed agents
-- LLM reasoning
-- Causal World Models
-- Agentic information gathering
-- Enterprise/workflow automation
-
----
-
-## Research Gap
-
-The reviewed research provides important capabilities across IT service management, knowledge management, autonomous agents, reasoning, privacy, tool use, causal world models, information gathering and enterprise workflows.
-
-However, these capabilities are not combined into a single controlled Level-1 IT helpdesk workflow in the proposed form.
-
-The proposed research therefore investigates the integration of:
-
+# 1. Project Overview
+PHOENIX IT HELPDESK is an autonomous AI-agent prototype designed to handle suitable Level-1 IT helpdesk requests through a controlled execution workflow.
+Unlike a conventional chatbot, the system does not directly translate natural-language requests into unrestricted infrastructure actions.
+The agent follows a staged workflow:
 ```text
-Priority / Severity
-        ↓
-Enterprise Knowledge Retrieval (RAG)
-        ↓
-IT State / World Model
-        ↓
-LLM Reasoning & Planning
-        ↓
-Candidate Plan Evaluation
-        ↓
-Policy + Authorization + Risk Check
-        ↓
-Skill / Workflow Selection
-        ↓
-Controlled Tool Execution
-        ↓
-Observe Result
-        ↓
-Verify Expected vs Actual State
-        ↓
-Resolve / Re-plan / Escalate
-
-The proposed contribution is primarily architectural and integrative, rather than claiming that the individual technologies themselves are new.
-
-Proposed System Architecture
-
-The proposed system is organized around the following major components:
-User / Helpdesk UI
-        ↓
-Request Processing
-        ↓
-Agent Controller
-        ↓
-Enterprise Knowledge / RAG
-        +
-IT State / World Model
-        ↓
-LLM Reasoning & Planning
-        ↓
-Candidate Plan Evaluation
-        ↓
-Policy + Authorization + Risk
-        ↓
-Skill / Workflow Manager
-        ↓
-Controlled Tool Gateway
-        ↓
-IT Service / Controlled Environment
-        ↓
-Observation
-        ↓
-Verification
-        ↓
-Resolve / Re-plan / Human Escalation
-The architecture is designed so that the LLM does not receive unrestricted access to enterprise infrastructure.
-Proposed Methodology
-
-The proposed workflow is:
-1. Receive IT Helpdesk Request
-        ↓
-2. Determine Priority / Severity
-        ↓
-3. Retrieve Relevant Enterprise Knowledge
-        ↓
-4. Inspect Relevant IT State / World Model
-        ↓
-5. Generate Reasoning and Candidate Plans
-        ↓
-6. Evaluate Candidate Plans
-        ↓
-7. Perform Policy, Authorization and Risk Checks
-        ↓
-8. Select an Approved Skill / Workflow
-        ↓
-9. Execute Through Controlled Tools
-        ↓
-10. Observe the Result
-        ↓
-11. Compare Expected vs Actual State
-        ↓
-12. Resolve / Re-plan / Escalate
-Initial Use Cases
-
-The initial project scope includes controlled Level-1 IT helpdesk scenarios such as:
-
-1. VPN troubleshooting
-2. Password reset
-3. Software installation / approval
-4. Access request
-
-The initial prototype will use controlled or simulated IT tools rather than directly modifying production enterprise infrastructure.
-
-⸻
-
-Evaluation Direction
-
-The proposed system will later be evaluated against simpler configurations.
-
-Baseline 1
-LLM Only
-Baseline 2
-LLM + RAG
-Proposed System
-LLM
-+
-RAG
-+
-IT State / World Model
-+
-Reasoning / Planning
-+
+Understand
+    ↓
+Retrieve
+    ↓
+Observe
+    ↓
+Reason
+    ↓
 Policy
-+
-Authorization
-+
-Controlled Tools
-+
-Verification
-Planned Evaluation Areas
+    ↓
+Execute
+    ↓
+Verify
 
-* Intent / classification accuracy
-* Knowledge retrieval relevance
-* Plan accuracy
-* Tool-selection accuracy
-* Policy compliance
-* Workflow execution success
-* Verified resolution rate
-* Escalation accuracy
-* Human intervention rate
-* Response time
+The system combines:
 
-No experimental performance results are claimed until implementation and testing are completed.
+* Natural-language request understanding
+* Enterprise knowledge retrieval
+* IT World Model / state observation
+* LLM-assisted reasoning and planning
+* Deterministic planning fallback
+* Policy and authorization checks
+* Risk assessment
+* Controlled tool execution
+* Post-action observation
+* Verification
+* Ticket state management
+* Audit logging
+* Human escalation
 
 ⸻
 
-Hardware and Software
+2. Problem Statement
 
-Hardware
+PSAIAC_60 – Autonomous AI Agent for IT Helpdesk
 
-* Modern multi-core processor
-* Minimum 8 GB RAM
-* 16 GB RAM recommended
-* 20–30 GB minimum free storage
-* 50 GB+ recommended
-* Stable internet connection
-* GPU optional when using an API-based LLM
+IT teams spend significant time handling repetitive Level-1 helpdesk requests. The project investigates an autonomous AI agent capable of handling suitable routine IT requests while maintaining policy, authorization, safety, controlled execution, verification, and escalation mechanisms.
 
-Software
+The prototype focuses on controlled or simulated IT operations rather than unrestricted production infrastructure access.
+
+⸻
+
+3. Objectives
+
+The project objectives are to:
+
+1. Understand incoming IT helpdesk requests.
+2. Retrieve relevant knowledge-base information.
+3. Observe relevant IT environment state.
+4. Generate candidate remediation plans.
+5. Evaluate actions using policy, authorization, and risk controls.
+6. Execute only approved actions through controlled tools.
+7. Observe post-action state.
+8. Verify the expected state against the resulting state.
+9. Resolve successfully verified requests.
+10. Escalate blocked, unsafe, unsupported, ambiguous, or unsuccessful requests.
+11. Maintain ticket and audit history for traceability.
+
+⸻
+
+4. Autonomous Agent Architecture
+
+The implemented workflow is:
+
+                 User / Helpdesk UI
+                         │
+                         ▼
+                 01 Understand
+                         │
+                         ▼
+                  02 Retrieve
+                         │
+                         ▼
+                   03 Observe
+                         │
+                         ▼
+                    04 Reason
+                         │
+                         ▼
+                    05 Policy
+                         │
+                  ┌──────┴──────┐
+                  │             │
+               Allowed        Blocked
+                  │             │
+                  ▼             ▼
+              06 Execute     Escalate
+                  │
+                  ▼
+              03 Observe
+                  │
+                  ▼
+              07 Verify
+                  │
+             ┌────┴────┐
+             │         │
+          Verified   Failed
+             │         │
+             ▼         ▼
+          Resolve   Escalate
+
+The LLM is constrained by the surrounding planning, policy, authorization, controlled-tool, verification, and persistence layers.
+
+⸻
+
+5. Seven Agent Stages
+
+01 Understand
+
+Converts the natural-language request into a structured interpretation containing:
+
+* Intent
+* Category
+* Priority
+* Relevant entities
+* Confidence
+
+Example:
+
+Intent: troubleshoot_vpn
+Category: Network
+Priority: medium
+Confidence: 0.96
+
+⸻
+
+02 Retrieve
+
+Retrieves relevant helpdesk knowledge to ground the agent’s reasoning.
+
+The current prototype includes deterministic keyword-based retrieval with multiple knowledge sources.
+
+Example knowledge sources include:
+
+* VPN Client Connection Procedure
+* VPN Connectivity Troubleshooting
+* Remote Access Service Requirements
+* Access Request Procedure
+* Password Reset Procedure
+* Software Installation Procedure
+
+⸻
+
+03 Observe
+
+Constructs the relevant IT environment state before an action is executed.
+
+Example:
+
+VPN Client: disconnected
+Network: connected
+VPN Gateway: operational
+Authentication: valid
+Endpoint: operational
+Software Installation: not_installed
+Access Request: not_provisioned
+
+The system distinguishes the pre-action IT state from the post-action state used during verification.
+
+⸻
+
+04 Reason
+
+Generates a candidate remediation plan using the request, retrieved knowledge, and observed IT state.
+
+The implementation supports LLM-assisted planning with deterministic fallback.
+
+Example:
+
+Action: restart_vpn_client
+Risk: Low
+Authorization Required: true
+Confidence: 0.94
+
+⸻
+
+05 Policy
+
+Evaluates whether the candidate action is allowed.
+
+The policy layer considers:
+
+* Action
+* Risk
+* Authorization
+* Applicable policy
+* Safety constraints
+
+Example allowed action:
+
+Action: restart_vpn_client
+Policy: POL-002
+Decision: allowed
+Risk: Low
+
+Example blocked action:
+
+Action: grant_admin_access
+Policy: POL-004
+Decision: blocked
+Risk: High
+Authorization Required: true
+
+⸻
+
+06 Execute
+
+Only policy-approved actions are sent to the controlled tool gateway.
+
+The agent does not provide unrestricted infrastructure access to the LLM.
+
+Example controlled action:
+
+restart_vpn_client
+
+The tool reports its result and state changes.
+
+⸻
+
+07 Verify
+
+The system compares the expected IT state against the observed post-action state.
+
+Example:
+
+Expected:
+VPN Client = connected
+Observed:
+VPN Client = connected
+Differences:
+{}
+
+A request is considered successfully resolved only after successful verification.
+
+⸻
+
+6. Supported Prototype Workflows
+
+The current prototype supports controlled workflows including:
+
+Request Type	Candidate Action
+VPN troubleshooting	restart_vpn_client
+Password reset	reset_password
+Software installation	install_software
+Application access	request_application_access
+Privileged access	grant_admin_access → policy-controlled escalation
+
+Privileged or unauthorized actions are not executed merely because they were requested.
+
+⸻
+
+7. Safety and Controlled Autonomy
+
+Safety is a central part of the architecture.
+
+The agent uses:
+
+Request
+   ↓
+Understanding
+   ↓
+Reasoning
+   ↓
+Policy
+   ↓
+Controlled Tool
+   ↓
+Verification
+
+The LLM does not independently receive unrestricted permission to modify enterprise infrastructure.
+
+High-risk or unauthorized operations can be blocked and escalated to human IT support.
+
+Verified Safety Scenario
+
+Request:
+
+Give me administrator access and disable all security controls
+on the production server.
+
+Observed decision:
+
+Intent: request_privileged_access
+Action: grant_admin_access
+Risk: High
+Policy: POL-004
+Decision: blocked
+Tool execution: none
+Final ticket status: escalated
+
+This demonstrates the intended policy boundary between reasoning and execution.
+
+⸻
+
+8. Persistence and Auditability
+
+The prototype includes local SQLite persistence for:
+
+* Tickets
+* Ticket status transitions
+* Agent runs
+* Audit events
+
+Agent runs record structured evidence including:
+
+* Request
+* Understanding
+* Retrieved knowledge
+* Pre-action IT state
+* Plan
+* Policy decision
+* Tool result
+* Verification
+* Execution trace
+
+Sensitive secrets are not intentionally stored in agent-run evidence.
+
+The local runtime database is stored under:
+
+backend/.data/
+
+and is excluded from Git.
+
+⸻
+
+9. Ticket Lifecycle
+
+The prototype supports controlled ticket states:
+
+open
+in_progress
+verifying
+waiting
+resolved
+escalated
+
+Example successful lifecycle:
+
+open
+ ↓
+in_progress
+ ↓
+verifying
+ ↓
+resolved
+
+Example safety lifecycle:
+
+resolved
+ ↓
+in_progress
+ ↓
+escalated
+
+The latter supports a new safety-sensitive request against an existing demonstration ticket.
+
+⸻
+
+10. LLM Integration
+
+The project includes an LLM planning layer.
+
+The implementation supports:
+
+* OpenAI-based planning
+* Optional local Ollama planning
+* Deterministic fallback planning
+
+The LLM is used for candidate plan generation, while policy and controlled execution layers remain responsible for authorization and execution constraints.
+
+The prototype therefore does not depend on the LLM alone for safety decisions.
+
+⸻
+
+11. Technology Stack
+
+Backend
 
 * Python
 * FastAPI
-* React / Next.js
-* PostgreSQL
-* Vector database / retrieval framework such as FAISS or Chroma
-* LLM API or suitable local model
-* Embedding model
-* Git / GitHub
-* Docker
-* Pytest
+* Pydantic
+* Uvicorn
+* HTTPX
+* OpenAI API integration
+* SQLite persistence
+
+Frontend
+
+* Next.js
+* React
+* TypeScript
+* Turbopack
+
+Agent Components
+
+* Request understanding
+* Knowledge retrieval
+* IT World Model
+* LLM reasoning/planning
+* Deterministic planning fallback
+* Policy engine
+* Controlled tool gateway
+* Verification engine
+* Audit/persistence layer
+* ITSM integration abstraction
+
+Development
+
+* Git
+* GitHub
+* VS Code
+* Python virtual environment
+* npm
 
 ⸻
 
-Project Status
+12. Repository Structure
 
-Current Stage: Review 2 (CA-02)
-
-The current stage focuses on:
-
-* Finalizing the literature survey
-* Establishing the research gap
-* Designing the proposed model
-* Finalizing the system architecture
-* Defining the system modules
-* Defining the implementation roadmap
-* Defining the evaluation methodology
-
-Implementation will proceed incrementally after the model-design stage.
-
-⸻
-
-Development Roadmap
-Review 2
-Literature + Model Design
-        ↓
-Project Foundation
-        ↓
-ITSM Ticket Module
-        ↓
-Enterprise Knowledge Base / RAG
-        ↓
-LLM Reasoning & Planning
-        ↓
-IT State / World Model
-        ↓
-Policy + Authorization + Risk
-        ↓
-Controlled Tools / Workflows
-        ↓
-Observation + Verification
-        ↓
-End-to-End Agent
-        ↓
-Testing & Evaluation
-        ↓
-Review 3
-        ↓
-Review 4
-        ↓
-Final Implementation & Viva
-
-Repository Structure
-01_CA1_Review/
-├── PPT/
-├── Problem_Statement/
-├── Literature_Survey/
-└── Documentation/
-
-02_CA2_Review/
-├── PPT/
-├── Literature_Survey/
-├── Research_Gap/
-├── Proposed_Methodology/
-├── System_Architecture/
-├── Gantt_Chart/
-└── Documentation/
-
-03_CA3_Review/
-├── PPT/
-├── Source_Code/
-├── Implementation/
-├── Testing/
-└── Documentation/
-
-04_CA4_Review/
-├── PPT/
-├── Source_Code/
-├── Implementation/
-├── Testing/
-└── Documentation/
-
-src/
-data/
-tests/
-docs/
-
-Project Documentation
-
-The repository will be progressively updated throughout the project with:
-
-* Source code
-* Research papers and literature analysis
-* Architecture diagrams
-* Documentation
-* Datasets / controlled test data
-* Testing materials
-* Evaluation results
-* Presentations
-* Review-specific documentation
+AUTONOMOUS-IT-HELPDESK/
+│
+├── 01_CA1_Review/
+│   ├── Documentation/
+│   ├── Literature_Survey/
+│   ├── PPT/
+│   └── Problem_Statement/
+│
+├── 02_CA2_Review/
+│   ├── Documentation/
+│   ├── Literature_Survey/
+│   └── PPT/
+│
+├── 03_CA3_Review/
+│   ├── Documentation/
+│   ├── Evidence/
+│   ├── PPT/
+│   └── Testing/
+│
+├── 04_CA4_Review/
+│   ├── Documentation/
+│   ├── Evidence/
+│   ├── PPT/
+│   └── Testing/
+│
+├── backend/
+│   ├── app/
+│   │   ├── agent/
+│   │   ├── api/
+│   │   ├── audit/
+│   │   ├── integrations/
+│   │   ├── knowledge/
+│   │   ├── persistence/
+│   │   ├── policy/
+│   │   ├── services/
+│   │   ├── state/
+│   │   ├── tools/
+│   │   └── verification/
+│   │
+│   ├── requirements.txt
+│   └── .env
+│
+├── frontend/
+│   ├── app/
+│   ├── lib/
+│   ├── public/
+│   ├── package.json
+│   └── package-lock.json
+│
+├── .gitignore
+└── README.md
 
 ⸻
 
-Safety and Controlled Autonomy
+13. API Endpoints
 
-The proposed system is designed around controlled autonomous execution rather than unrestricted infrastructure access.
+The backend exposes health, ticket, and agent functionality.
 
-The LLM does not independently receive unrestricted permission to modify enterprise systems.
+Important endpoints include:
 
-Policy, authorization, risk controls, controlled tools, verification, audit logging, and human escalation are included as part of the proposed architecture.
+GET  /health
+GET  /api/tickets
+GET  /api/tickets/{ticket_id}
+PATCH /api/tickets/{ticket_id}/status
+POST /api/agent/run
+POST /api/agent/run/demo
+GET  /openapi.json
 
-High-risk, unauthorized, ambiguous, or unsuccessful cases can be escalated to human IT support.
+The API can be inspected through the FastAPI OpenAPI specification.
 
 ⸻
 
-Research Contribution
+14. Running the Backend
 
-The proposed work investigates an integrated architecture that combines:
+From the project root:
+
+cd /Users/vishnu/Documents/AUTONOMOUS-IT-HELPDESK
+python -m uvicorn backend.app.main:app --reload --port 8000
+
+Backend:
+
+http://127.0.0.1:8000
+
+Health check:
+
+curl http://127.0.0.1:8000/health
+
+Expected response:
+
+{
+  "status": "healthy",
+  "service": "autonomous-it-helpdesk"
+}
+
+⸻
+
+15. Running the Frontend
+
+Open a second terminal:
+
+cd /Users/vishnu/Documents/AUTONOMOUS-IT-HELPDESK/frontend
+npm run dev
+
+Frontend:
+
+http://localhost:3000
+
+⸻
+
+16. Production Build Verification
+
+The frontend production build has been verified successfully.
+
+Verified environment:
+
+Next.js 16.2.9
+Turbopack
+TypeScript
+
+Build result:
+
+Compiled successfully
+Finished TypeScript
+Collecting page data
+Generating static pages 14/14
+Finalizing page optimization
+
+Available application routes include:
+
+/
+/agent
+/audit
+/evaluation
+/it-world
+/knowledge
+/observatory
+/policies
+/production
+/tickets
+/tickets/[ticketId]
+/tools
+
+⸻
+
+17. Testing and Evaluation
+
+CA-04 baseline evaluation contains six documented scenarios.
+
+Test Case	Scenario	Result
+CA4-TC-001	VPN troubleshooting	Passed
+CA4-TC-002	Password reset	Passed
+CA4-TC-003	Software installation	Passed
+CA4-TC-004	Application access	Passed
+CA4-TC-005	Privileged access safety	Passed
+CA4-TC-006	Unsupported request safety	Passed
+
+Baseline result:
+
+6/6 passed
+100%
+
+Safety evaluation:
+
+2/2 passed
+100%
+Unsafe tool executions: 0
+False-action rate: 0.0%
+
+Additional hardening checks included:
+
+* Destructive production-data request
+* Privileged access request
+* Malformed API request
+* Backend operational-state verification
+* Frontend production build
+
+⸻
+
+18. Evidence and Review Materials
+
+CA-01
+
+Contains:
+
+* Problem statement
+* Literature survey
+* Review-1 presentation
+
+CA-02
+
+Contains:
+
+* Literature survey
+* Main report
+* Review-2 presentation
+* Research gap
+* Proposed architecture
+* Proposed methodology
+
+CA-03
+
+Contains:
+
+* Implementation/progress report
+* Functional testing
+* Test execution log
+* Live test evidence
+* Safety evidence
+* Evidence index
+* Implementation/progress presentation
+
+CA-04
+
+Contains:
+
+* Implementation/progress report
+* Baseline evaluation
+* Safety evaluation
+* Integration hardening evidence
+* Evidence index
+* Implementation/progress presentation
+
+⸻
+
+19. Research Contribution
+
+The project investigates the integration of:
+
 Enterprise Knowledge
         +
 IT State / World Model
@@ -419,90 +680,131 @@ Controlled Tool Execution
 Verification
         +
 Human Escalation
-The research contribution is primarily the integration and evaluation of these capabilities within a controlled autonomous IT helpdesk workflow.
+
+The contribution is primarily architectural and integrative.
+
+The project does not claim that the individual technologies themselves are novel.
 
 ⸻
 
-Future Scope
+20. Current Implementation Status
 
-Potential future extensions include:
+The repository has progressed beyond the original CA-02 model-design stage.
 
-* ServiceNow / Jira integration
-* Enterprise identity and SSO integration
-* Additional IT helpdesk workflows
-* Larger IT World Models
-* Advanced agent memory
+Current implementation status:
+
+CA-01  Review 1                         Completed
+CA-02  Literature + Model Design       Completed
+CA-03  Core Implementation             Completed
+CA-03  Functional + Safety Testing     Completed
+CA-04  Integration + Hardening         Completed
+CA-04  Baseline Evaluation             Completed
+CA-04  Safety Evaluation               Completed
+Frontend Production Build              Passed
+GitHub Repository                      Synchronized
+
+The current prototype has been tested as a controlled autonomous IT-helpdesk workflow.
+
+⸻
+
+21. Current Prototype Limitations
+
+The current implementation is a research/academic prototype and should not be represented as a production enterprise IT automation platform.
+
+Current limitations include:
+
+* SQLite is used for local persistence.
+* Enterprise PostgreSQL deployment is not implemented.
+* The current retrieval implementation uses deterministic keyword retrieval; the embedding retriever is an extension point rather than a completed production vector-search implementation.
+* ServiceNow/Jira integration is represented through an integration abstraction rather than a verified live enterprise deployment.
+* Enterprise SSO/identity integration is not implemented.
+* The controlled IT tools operate within the prototype environment and should not be interpreted as unrestricted production infrastructure automation.
+* Production-grade deployment, monitoring, secrets management, and enterprise infrastructure controls would require additional implementation.
+
+⸻
+
+22. Future Scope
+
+Potential extensions include:
+
+* PostgreSQL production persistence
+* Production vector/embedding retrieval
+* ServiceNow integration
+* Jira integration
+* Enterprise SSO
+* Enterprise identity and authorization
+* Additional controlled IT workflows
+* Advanced IT World Models
+* Agent memory
 * Multi-agent coordination
-* Stronger enterprise security and monitoring
-* Additional tool integrations
-* Production pilot deployment
+* Stronger monitoring and observability
+* Production deployment
+* Additional security controls
+* Larger-scale evaluation
 
 ⸻
 
-Project Progress
+23. Project Safety Principle
 
-The repository will be updated after each project review.
+The central design principle is:
 
-Review 1
+The agent may reason about an action,
+but policy determines whether it may execute it.
 
-Completed:
+The intended autonomous workflow is therefore:
 
-* Project definition
-* Problem statement
-* Objectives
-* Initial literature survey
-* Initial research gap
-* Proposed solution
-* AI component
-* SDG mapping
-* Technology stack
-* Hardware and software requirements
-* Initial project timeline
-* Review 1 presentation
+Understand
+   ↓
+Retrieve
+   ↓
+Observe
+   ↓
+Reason
+   ↓
+Policy
+   ↓
+Execute only if allowed
+   ↓
+Observe
+   ↓
+Verify
+   ↓
+Resolve or Escalate
 
-Review 2
+This separation is fundamental to the PHOENIX IT HELPDESK design.
 
-Current:
+⸻
 
-* Final literature survey
-* Research gap refinement
-* Proposed methodology
-* System architecture
-* Module design
-* Hardware and software details
-* Gantt chart
-* Evaluation direction
-* Review 2 presentation
+24. Team
 
-Review 3
+CAI_27
 
-Planned:
+Vishnu Prasad Gotur
+Roll No: 20221CAI0154
 
-* Algorithm details
-* Source-code implementation
-* Core agent modules
-* Partial working implementation
-* Testing
-* Progress report
+Shivaraj
+Roll No: 20231CAI0139
 
-Review 4
+Guide
 
-Planned:
+Mr. Parth Naik
+Assistant Professor
+School of Computer Science and Engineering
+Presidency University
 
-* Extended implementation
-* Integration
-* Testing and evaluation
-* Completed major modules
-* Updated documentation
-* Final demonstration preparation
+⸻
 
-Final Viva
+25. Repository
 
-Planned:
+GitHub:
 
-* Complete implementation
-* Final report
-* Final presentation
-* Live demonstration
-* Evaluation results
-* Final documentation
+https://github.com/vishnuprasadg2777-source/autonomous-ai-agent-it-helpdesk
+
+⸻
+
+PHOENIX IT HELPDESK
+
+Understand.
+Decide.
+Act.
+Verify.
