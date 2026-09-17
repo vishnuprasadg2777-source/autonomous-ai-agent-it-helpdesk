@@ -11,80 +11,107 @@ class UnderstandingResult:
     confidence: float
 
 
-def understand_request(request: str) -> UnderstandingResult:
-    text = request.lower().strip()
+def _contains_any(text: str, phrases: list[str]) -> bool:
+    return any(phrase in text for phrase in phrases)
 
-    # ---------------------------------------------------------
-    # Priority detection
-    # ---------------------------------------------------------
-    if any(
-        word in text
-        for word in [
-            "critical",
-            "urgent",
-            "immediately",
-            "down",
-            "outage",
-        ]
-    ):
-        priority = "high"
-    elif any(
-        phrase in text
-        for phrase in [
-            "low priority",
-            "when possible",
-            "not urgent",
-        ]
-    ):
-        priority = "low"
-    else:
-        priority = "medium"
 
-    # ---------------------------------------------------------
-    # Entity extraction
-    # ---------------------------------------------------------
-    entities: dict[str, str] = {}
-
-    # ---------------------------------------------------------
-    # Software extraction
-    # ---------------------------------------------------------
-    software_patterns = [
-        # Example:
-        # install Microsoft Teams
-        # install Microsoft Teams on my computer
-        r"\binstall\s+(?:the\s+)?(.+?)(?=\s+(?:on|onto)\s+(?:my|the)\s+(?:computer|device|laptop|pc)\b|[.,!?]|$)",
-
-        # Example:
-        # download Microsoft Teams
-        # download Microsoft Teams on my computer
-        r"\bdownload\s+(?:and\s+install\s+)?(?:the\s+)?(.+?)(?=\s+(?:on|onto)\s+(?:my|the)\s+(?:computer|device|laptop|pc)\b|[.,!?]|$)",
-
-        # Example:
-        # install Microsoft Teams software
-        r"\binstall\s+(?:the\s+)?(.+?)\s+(?:software|application)\b",
-
-        # Example:
-        # software called Microsoft Teams
-        r"\bsoftware\s+(?:called|named)\s+(.+?)(?=[.,!?]|$)",
-
-        # Example:
-        # application called Microsoft Teams
-        r"\bapplication\s+(?:called|named)\s+(.+?)(?=[.,!?]|$)",
+def _extract_priority(text: str) -> str:
+    high_priority = [
+        "critical",
+        "urgent",
+        "immediately",
+        "as soon as possible",
+        "right now",
+        "emergency",
+        "outage",
+        "everything is down",
+        "system is down",
+        "service is down",
     ]
 
-    excluded_software_names = {
+    low_priority = [
+        "low priority",
+        "when possible",
+        "when convenient",
+        "not urgent",
+        "no rush",
+        "whenever possible",
+    ]
+
+    if _contains_any(text, high_priority):
+        return "high"
+
+    if _contains_any(text, low_priority):
+        return "low"
+
+    return "medium"
+
+
+def _clean_entity(value: str) -> str:
+    value = value.strip()
+    value = re.sub(r"\s+", " ", value)
+    value = value.strip(" .,!?;:'\"")
+
+    return value
+
+
+def _extract_software(text: str) -> str | None:
+    """
+    Extract software/application names from natural-language requests.
+
+    Examples:
+        install Microsoft Teams
+        please install Google Chrome
+        I need Zoom installed
+        download and install VS Code
+        can you install the SAP client on my laptop
+    """
+
+    patterns = [
+        # install/download + application name
+        r"\b(?:install|download\s+and\s+install|download)\s+"
+        r"(?:the\s+)?(.+?)"
+        r"(?=\s+(?:on|onto)\s+(?:my|the)\s+"
+        r"(?:computer|device|laptop|pc|machine)\b|[.,!?;]|$)",
+
+        # application/software called/named X
+        r"\b(?:software|application|program|app)\s+"
+        r"(?:called|named)\s+(.+?)(?=[.,!?;]|$)",
+
+        # I need/want X installed
+        r"\b(?:need|want|require)\s+"
+        r"(.+?)\s+(?:software|application|program|app)"
+        r"\s+(?:installed|installation)\b",
+
+        # X installed on my computer
+        r"\b(?:need|want|require)\s+"
+        r"(.+?)\s+installed\s+(?:on|onto)\s+"
+        r"(?:my|the)\s+(?:computer|device|laptop|pc|machine)\b",
+    ]
+
+    generic_words = {
         "the",
         "a",
         "an",
-        "on",
-        "onto",
-        "in",
-        "for",
-        "my",
+        "software",
+        "application",
+        "program",
+        "app",
+        "and",
+        "install",
+        "download",
+        "please",
+        "it",
+        "this",
+        "that",
+        "approved",
+        "requested",
         "computer",
         "device",
         "laptop",
         "pc",
+        "machine",
+        "my",
         "the computer",
         "my computer",
         "the device",
@@ -93,242 +120,221 @@ def understand_request(request: str) -> UnderstandingResult:
         "my laptop",
         "the pc",
         "my pc",
-        "approved",
-        "software",
-        "application",
-        "and",
-        "install",
-        "download",
     }
 
-    for pattern in software_patterns:
-        match = re.search(pattern, text)
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
 
-        if match:
-            candidate = match.group(1).strip().rstrip(".,!?")
+        if not match:
+            continue
 
-            # Normalize whitespace.
-            candidate = re.sub(r"\s+", " ", candidate)
+        candidate = _clean_entity(match.group(1))
 
-            # Remove common trailing context that may have been captured.
-            candidate = re.sub(
-                r"\s+(?:on|onto)\s+(?:my|the)\s+"
-                r"(?:computer|device|laptop|pc)$",
-                "",
-                candidate,
-                flags=re.IGNORECASE,
-            )
+        candidate = re.sub(
+            r"\s+(?:on|onto)\s+(?:my|the)\s+"
+            r"(?:computer|device|laptop|pc|machine)$",
+            "",
+            candidate,
+            flags=re.IGNORECASE,
+        )
 
-            candidate = re.sub(
-                r"\s+(?:on|onto)\s+(?:my|the)$",
-                "",
-                candidate,
-                flags=re.IGNORECASE,
-            )
+        candidate = re.sub(
+            r"\s+(?:software|application|program|app)$",
+            "",
+            candidate,
+            flags=re.IGNORECASE,
+        )
 
-            # Remove generic trailing software/application words.
-            candidate = re.sub(
-                r"\s+(?:software|application|program)$",
-                "",
-                candidate,
-                flags=re.IGNORECASE,
-            )
+        candidate = _clean_entity(candidate)
 
-            candidate = candidate.strip()
+        if not candidate:
+            continue
 
-            if candidate.lower() not in excluded_software_names:
-                if candidate:
-                    # Convert to readable title case.
-                    entities["software"] = candidate.title()
-                    break
+        if candidate.lower() in generic_words:
+            continue
 
-    # Preserve approval context without inventing a software name.
-    if (
-        "software" in text
-        and "approved" in text
-        and "software" not in entities
-    ):
-        entities["software"] = "approved_software"
+        return candidate.title()
 
-    # ---------------------------------------------------------
-    # Access resource extraction
-    # ---------------------------------------------------------
-    access_patterns = [
-        r"access\s+(?:to|for)\s+(?:the\s+)?([a-zA-Z0-9][a-zA-Z0-9._+-]{1,40})",
-        r"permission\s+(?:to|for)\s+(?:the\s+)?([a-zA-Z0-9][a-zA-Z0-9._+-]{1,40})",
+    return None
+
+
+def _extract_access_resource(text: str) -> str | None:
+    """
+    Extract the resource/application/system for an access request.
+
+    Examples:
+        I need access to Salesforce
+        give me permission for SAP
+        request access to the finance portal
+        I need access to the HR application
+    """
+
+    patterns = [
+        r"\baccess\s+(?:to|for)\s+(?:the\s+)?"
+        r"(.+?)(?=[.,!?;]|$)",
+
+        r"\bpermission\s+(?:to|for)\s+(?:the\s+)?"
+        r"(.+?)(?=[.,!?;]|$)",
+
+        r"\bpermissions?\s+(?:to|for)\s+(?:the\s+)?"
+        r"(.+?)(?=[.,!?;]|$)",
     ]
 
-    for pattern in access_patterns:
-        match = re.search(pattern, text)
+    excluded = {
+        "the",
+        "a",
+        "an",
+        "requested",
+        "request",
+        "application",
+        "system",
+        "resource",
+        "this",
+        "that",
+        "it",
+    }
 
-        if match:
-            candidate = match.group(1).strip().rstrip(".,!?")
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
 
-            if candidate not in {
-                "the",
-                "a",
-                "an",
-                "requested",
-                "application",
-                "system",
-                "resource",
-            }:
-                entities["resource"] = candidate
-                break
+        if not match:
+            continue
 
-    # Generic standard application access request.
-    if (
-        "access" in text
-        and "resource" not in entities
-        and (
-            "application" in text
-            or "requested application" in text
-            or "request access" in text
+        candidate = _clean_entity(match.group(1))
+
+        # Remove trailing request language.
+        candidate = re.sub(
+            r"\s+(?:please|for me|as soon as possible)$",
+            "",
+            candidate,
+            flags=re.IGNORECASE,
         )
-    ):
-        entities["resource"] = "requested_application"
 
-    # ---------------------------------------------------------
-    # Privileged / administrator access detection
-    #
-    # This must be checked before the generic access intent.
-    # Privileged access is intentionally mapped to a separate
-    # intent so the planner can propose grant_admin_access and
-    # the Policy layer can enforce POL-004.
-    # ---------------------------------------------------------
-    privileged_access_phrases = [
+        candidate = _clean_entity(candidate)
+
+        if candidate.lower() not in excluded and candidate:
+            return candidate
+
+    return None
+
+
+def _is_privileged_request(text: str) -> bool:
+    """
+    Detect requests for elevated/administrative privileges.
+
+    These requests must be classified separately from ordinary
+    application/resource access so the policy layer can enforce
+    privileged-access controls.
+    """
+
+    privileged_phrases = [
         "administrator access",
-        "admin access",
-        "administrative access",
         "administrator privileges",
-        "admin privileges",
-        "administrative privileges",
         "administrator permission",
+        "administrator rights",
+        "administrative access",
+        "administrative privileges",
+        "administrative permission",
+        "administrative rights",
+        "admin access",
+        "admin privileges",
         "admin permission",
+        "admin rights",
         "root access",
         "root privileges",
+        "root permission",
+        "root rights",
         "superuser access",
         "superuser privileges",
-        "elevated privileges",
+        "superuser permission",
+        "superuser rights",
         "elevated access",
+        "elevated privileges",
+        "elevated permission",
+        "elevated rights",
         "privileged access",
         "privileged privileges",
+        "privileged permission",
+        "privileged rights",
         "grant admin",
         "grant administrator",
         "give me admin",
         "give me administrator",
+        "give administrator",
+        "give admin",
         "make me administrator",
         "make me admin",
+        "make me an administrator",
+        "make me an admin",
+        "disable security controls",
+        "disable security",
+        "bypass security",
+        "bypass authentication",
+        "bypass access control",
+        "disable antivirus",
+        "disable endpoint protection",
+        "disable firewall",
     ]
 
-    is_privileged_access = any(
-        phrase in text
-        for phrase in privileged_access_phrases
-    )
+    return _contains_any(text, privileged_phrases)
 
-    if is_privileged_access:
-        if "resource" not in entities:
-            entities["resource"] = "privileged_system"
 
-        return UnderstandingResult(
-            intent="request_privileged_access",
-            category="Access",
-            priority="high",
-            entities=entities,
-            confidence=0.98,
-        )
-
-    # ---------------------------------------------------------
-    # VPN troubleshooting
-    # ---------------------------------------------------------
-    vpn_keywords = [
+def _is_vpn_request(text: str) -> bool:
+    vpn_terms = [
         "vpn",
         "virtual private network",
         "remote access",
+        "remote connection",
+        "cannot connect remotely",
+        "can't connect remotely",
+        "unable to connect remotely",
     ]
 
-    if any(keyword in text for keyword in vpn_keywords):
-        return UnderstandingResult(
-            intent="troubleshoot_vpn",
-            category="Network",
-            priority=priority,
-            entities=entities,
-            confidence=0.96,
-        )
+    return _contains_any(text, vpn_terms)
 
-    # ---------------------------------------------------------
-    # Password reset
-    # ---------------------------------------------------------
-    password_keywords = [
-        "password reset",
-        "reset my password",
-        "reset password",
+
+def _is_password_request(text: str) -> bool:
+    password_terms = [
+        "password",
         "forgot my password",
         "forgot password",
+        "forgotten password",
+        "password reset",
+        "reset password",
+        "reset my password",
         "change my password",
         "password expired",
+        "password has expired",
+        "password is expired",
         "cannot remember my password",
         "can't remember my password",
         "unable to remember my password",
+        "locked out of my account",
+        "account locked",
+        "login password",
     ]
 
-    if any(keyword in text for keyword in password_keywords):
-        return UnderstandingResult(
-            intent="reset_password",
-            category="Identity",
-            priority=priority,
-            entities=entities,
-            confidence=0.96,
-        )
+    return _contains_any(text, password_terms)
 
-    # ---------------------------------------------------------
-    # Software installation
-    # ---------------------------------------------------------
-    software_keywords = [
-        "install software",
-        "install the software",
-        "software installation",
-        "install an application",
-        "install application",
-        "application installation",
-        "need software installed",
-        "software installed",
-        "application installed",
-        "approved software",
-        "approved application",
+
+def _is_software_install_request(text: str) -> bool:
+    installation_terms = [
+        "install",
+        "installation",
         "download and install",
-        "download software",
-        "download application",
-        "need to install",
-        "want to install",
-        "please install",
-        "can you install",
-        "could you install",
+        "software installation",
+        "application installation",
+        "get this software installed",
+        "get the software installed",
+        "get this application installed",
+        "get the application installed",
     ]
 
-    # Natural-language installation detection.
-    is_install_request = (
-        re.search(r"\binstall\b", text) is not None
-        or re.search(r"\binstallation\b", text) is not None
-        or re.search(r"\bdownload\s+and\s+install\b", text) is not None
-    )
+    return _contains_any(text, installation_terms)
 
-    if (
-        any(keyword in text for keyword in software_keywords)
-        or is_install_request
-    ):
-        return UnderstandingResult(
-            intent="install_software",
-            category="Software",
-            priority=priority,
-            entities=entities,
-            confidence=0.94,
-        )
 
-    # ---------------------------------------------------------
-    # Standard access request
-    # ---------------------------------------------------------
-    access_keywords = [
+def _is_access_request(text: str) -> bool:
+    access_terms = [
         "access",
         "permission",
         "permissions",
@@ -339,9 +345,122 @@ def understand_request(request: str) -> UnderstandingResult:
         "access request",
         "privilege",
         "privileges",
+        "rights",
     ]
 
-    if any(keyword in text for keyword in access_keywords):
+    return _contains_any(text, access_terms)
+
+
+def _build_entities(text: str) -> dict[str, str]:
+    entities: dict[str, str] = {}
+
+    software = _extract_software(text)
+
+    if software:
+        entities["software"] = software
+
+    resource = _extract_access_resource(text)
+
+    if resource:
+        entities["resource"] = resource
+
+    return entities
+
+
+def understand_request(request: str) -> UnderstandingResult:
+    """
+    Convert the user's natural-language request into a structured
+    understanding used by retrieval, reasoning and policy.
+
+    The ticket ID is deliberately not considered here. The request
+    text is the source of the intent and entities.
+    """
+
+    text = request.lower().strip()
+
+    if not text:
+        return UnderstandingResult(
+            intent="unknown",
+            category="General IT",
+            priority="medium",
+            entities={},
+            confidence=0.10,
+        )
+
+    priority = _extract_priority(text)
+    entities = _build_entities(text)
+
+    # ---------------------------------------------------------
+    # 1. Privileged/security-sensitive requests
+    #
+    # This is deliberately checked first so:
+    # "give me admin access to Salesforce"
+    # does NOT become ordinary application access.
+    # ---------------------------------------------------------
+
+    if _is_privileged_request(text):
+        entities.setdefault("resource", "privileged_system")
+
+        return UnderstandingResult(
+            intent="request_privileged_access",
+            category="Access",
+            priority="high",
+            entities=entities,
+            confidence=0.98,
+        )
+
+    # ---------------------------------------------------------
+    # 2. VPN / remote connectivity
+    # ---------------------------------------------------------
+
+    if _is_vpn_request(text):
+        return UnderstandingResult(
+            intent="troubleshoot_vpn",
+            category="Network",
+            priority=priority,
+            entities=entities,
+            confidence=0.96,
+        )
+
+    # ---------------------------------------------------------
+    # 3. Password / account recovery
+    # ---------------------------------------------------------
+
+    if _is_password_request(text):
+        return UnderstandingResult(
+            intent="reset_password",
+            category="Identity",
+            priority=priority,
+            entities=entities,
+            confidence=0.96,
+        )
+
+    # ---------------------------------------------------------
+    # 4. Software/application installation
+    # ---------------------------------------------------------
+
+    if _is_software_install_request(text):
+        if "software" not in entities and (
+            "approved software" in text
+            or "approved application" in text
+        ):
+            entities["software"] = "approved_software"
+
+        return UnderstandingResult(
+            intent="install_software",
+            category="Software",
+            priority=priority,
+            entities=entities,
+            confidence=0.94,
+        )
+
+    # ---------------------------------------------------------
+    # 5. Standard access request
+    # ---------------------------------------------------------
+
+    if _is_access_request(text):
+        entities.setdefault("resource", "requested_resource")
+
         return UnderstandingResult(
             intent="request_access",
             category="Access",
@@ -351,8 +470,9 @@ def understand_request(request: str) -> UnderstandingResult:
         )
 
     # ---------------------------------------------------------
-    # General IT fallback
+    # 6. General IT fallback
     # ---------------------------------------------------------
+
     return UnderstandingResult(
         intent="unknown",
         category="General IT",

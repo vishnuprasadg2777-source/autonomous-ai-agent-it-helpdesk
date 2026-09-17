@@ -90,6 +90,42 @@ POLICY_RULES = {
 }
 
 
+# =========================================================
+# HELPERS
+# =========================================================
+
+def _blocked(
+    action: str,
+    risk: str,
+    reason: str,
+    policy_id: str,
+) -> PolicyDecision:
+    """Create a standard fail-closed policy decision."""
+
+    return PolicyDecision(
+        action=action,
+        decision="blocked",
+        risk=risk,
+        authorization_required=True,
+        reason=reason,
+        policy_id=policy_id,
+    )
+
+
+def _state_is_valid(
+    it_state: dict[str, str],
+    key: str,
+    expected: str,
+) -> bool:
+    """Check one observed IT-state condition."""
+
+    return it_state.get(key) == expected
+
+
+# =========================================================
+# POLICY ENGINE
+# =========================================================
+
 def evaluate_policy(
     action: str,
     risk: str,
@@ -100,27 +136,30 @@ def evaluate_policy(
     Evaluate a candidate remediation action before execution.
 
     The planner proposes an action.
-    This policy layer determines whether the action is:
+    This policy layer independently determines whether the action is:
 
-    - allowed
-    - approval_required
-    - blocked
+        allowed
+        approval_required
+        blocked
 
-    Unknown actions are denied by default.
+    The policy engine is fail-closed:
+    an action without an explicit rule is blocked.
     """
 
-    rule = POLICY_RULES.get(action)
+    # Normalize the action so accidental surrounding whitespace
+    # cannot bypass policy lookup.
+    action = (action or "").strip()
 
     # =====================================================
     # DEFAULT DENY
     # =====================================================
 
+    rule = POLICY_RULES.get(action)
+
     if rule is None:
-        return PolicyDecision(
+        return _blocked(
             action=action,
-            decision="blocked",
-            risk=risk,
-            authorization_required=True,
+            risk=risk or "Unknown",
             reason=(
                 "No explicit policy rule exists for this action. "
                 "The action is blocked by default."
@@ -129,39 +168,66 @@ def evaluate_policy(
         )
 
     # =====================================================
+    # PRIVILEGED ACCESS
+    # =====================================================
+    # These actions are explicitly non-autonomous.
+    # They must never reach the tool gateway.
+
+    if action in {"grant_access", "grant_admin_access"}:
+        return _blocked(
+            action=action,
+            risk=rule["risk"],
+            reason=rule["reason"],
+            policy_id=rule["policy_id"],
+        )
+
+    # =====================================================
     # VPN STATE SAFETY CHECK
     # =====================================================
 
     if action == "restart_vpn_client":
-        if (
-            it_state.get("vpn_client") != "disconnected"
-            or it_state.get("network") != "connected"
-            or it_state.get("vpn_gateway") != "operational"
-            or it_state.get("authentication") != "valid"
-        ):
-            return PolicyDecision(
+        vpn_conditions = {
+            "vpn_client": "disconnected",
+            "network": "connected",
+            "vpn_gateway": "operational",
+            "authentication": "valid",
+        }
+
+        failed_conditions = [
+            key
+            for key, expected in vpn_conditions.items()
+            if not _state_is_valid(it_state, key, expected)
+        ]
+
+        if failed_conditions:
+            return _blocked(
                 action=action,
-                decision="blocked",
                 risk=rule["risk"],
-                authorization_required=True,
                 reason=(
                     "The observed IT state does not satisfy the "
-                    "conditions required for a controlled VPN restart."
+                    "conditions required for a controlled VPN restart. "
+                    f"Failed conditions: {', '.join(failed_conditions)}."
                 ),
                 policy_id=rule["policy_id"],
             )
 
     # =====================================================
-    # SOFTWARE SAFETY CHECK
+    # PASSWORD RESET SAFETY CHECK
+    # =====================================================
+
+    # =====================================================
+    # SOFTWARE INSTALLATION SAFETY CHECK
     # =====================================================
 
     if action == "install_software":
-        if it_state.get("endpoint") != "operational":
-            return PolicyDecision(
+        if not _state_is_valid(
+            it_state,
+            "endpoint",
+            "operational",
+        ):
+            return _blocked(
                 action=action,
-                decision="blocked",
                 risk=rule["risk"],
-                authorization_required=True,
                 reason=(
                     "Software installation is blocked because the "
                     "observed endpoint is not operational."
@@ -170,16 +236,18 @@ def evaluate_policy(
             )
 
     # =====================================================
-    # STANDARD ACCESS SAFETY CHECK
+    # STANDARD APPLICATION ACCESS SAFETY CHECK
     # =====================================================
 
     if action == "request_application_access":
-        if it_state.get("authentication") != "valid":
-            return PolicyDecision(
+        if not _state_is_valid(
+            it_state,
+            "authentication",
+            "valid",
+        ):
+            return _blocked(
                 action=action,
-                decision="blocked",
                 risk=rule["risk"],
-                authorization_required=True,
                 reason=(
                     "Application access cannot be provisioned because "
                     "the user's authentication state is not valid."
@@ -188,21 +256,31 @@ def evaluate_policy(
             )
 
     # =====================================================
-    # FINAL POLICY DECISION
+    # AUTHORIZATION REQUIREMENT
+    # =====================================================
+
+    authorization_required = (
+        requires_authorization
+        or rule["authorization_required"]
+    )
+
+    # =====================================================
+    # FINAL EXPLICIT POLICY DECISION
     # =====================================================
 
     return PolicyDecision(
         action=action,
         decision=rule["decision"],
         risk=rule["risk"],
-        authorization_required=(
-            requires_authorization
-            or rule["authorization_required"]
-        ),
+        authorization_required=authorization_required,
         reason=rule["reason"],
         policy_id=rule["policy_id"],
     )
 
+
+# =========================================================
+# API SERIALIZATION
+# =========================================================
 
 def policy_to_dict(
     decision: PolicyDecision,

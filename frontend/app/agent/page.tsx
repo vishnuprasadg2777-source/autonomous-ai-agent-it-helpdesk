@@ -143,9 +143,12 @@ export default function AgentPage() {
       });
 
       /*
-       * The backend returns the completed execution trace.
-       * The frontend replays that verified trace sequentially so
-       * the prototype visibly demonstrates the agent lifecycle.
+       * The backend returns the actual execution trace.
+       * Replay only stages that actually ran.
+       *
+       * IMPORTANT:
+       * Pending stages must remain pending.
+       * Blocked stages must remain blocked.
        */
       const validStages = response.stages.filter(
         (stage) =>
@@ -159,16 +162,16 @@ export default function AgentPage() {
         await sleep(index === 0 ? 650 : 800);
       }
 
-      setResult({
-        ...response,
-        stages: response.stages.map((stage) => ({
-          ...stage,
-          status:
-            stage.status === "blocked"
-              ? "blocked"
-              : "completed",
-        })),
-      });
+      /*
+       * CRITICAL FIX:
+       * Preserve the backend response exactly.
+       *
+       * Previously the frontend converted every non-blocked
+       * stage into "completed". That caused safety-blocked
+       * requests to incorrectly display Execute and Verify
+       * as completed.
+       */
+      setResult(response);
 
       window.localStorage.setItem(
         "autonomous-it:last-agent-run",
@@ -231,7 +234,7 @@ export default function AgentPage() {
       (item) => item.id === stageId,
     );
 
-    return stage?.status ?? "completed";
+    return stage?.status ?? "pending";
   };
 
   const activePipelineIndex = running
@@ -463,6 +466,7 @@ export default function AgentPage() {
                 const Icon = stage.icon;
                 const status = getStageStatus(stage.id);
                 const completed = status === "completed";
+                const blocked = status === "blocked";
                 const active =
                   running && index === activePipelineIndex;
 
@@ -475,6 +479,7 @@ export default function AgentPage() {
                       icon={Icon}
                       label={stage.label}
                       completed={completed}
+                      blocked={blocked}
                       active={active}
                       pending={status === "pending"}
                     />
@@ -662,12 +667,14 @@ function PipelineNode({
   icon: Icon,
   label,
   completed,
+  blocked,
   active,
   pending,
 }: {
   icon: typeof Activity;
   label: string;
   completed: boolean;
+  blocked: boolean;
   active: boolean;
   pending: boolean;
 }) {
@@ -678,21 +685,27 @@ function PipelineNode({
       }}
       transition={{ duration: 0.3 }}
       className={`flex min-w-[92px] flex-col items-center gap-2 rounded-lg border px-3 py-3 transition-all duration-500 ${
-        completed
-          ? "border-emerald-300/[0.08] bg-emerald-300/[0.025]"
-          : active
-            ? "border-indigo-300/[0.14] bg-indigo-300/[0.045]"
-            : "border-white/[0.05] bg-white/[0.012]"
+        blocked
+          ? "border-red-300/[0.1] bg-red-300/[0.025]"
+          : completed
+            ? "border-emerald-300/[0.08] bg-emerald-300/[0.025]"
+            : active
+              ? "border-indigo-300/[0.14] bg-indigo-300/[0.045]"
+              : "border-white/[0.05] bg-white/[0.012]"
       }`}
     >
       <div
         className={`relative flex h-7 w-7 items-center justify-center rounded-md border transition-all duration-500 ${
-          active
-            ? "border-indigo-300/[0.14] bg-indigo-300/[0.06]"
-            : "border-white/[0.05] bg-white/[0.018]"
+          blocked
+            ? "border-red-300/[0.14] bg-red-300/[0.05]"
+            : active
+              ? "border-indigo-300/[0.14] bg-indigo-300/[0.06]"
+              : "border-white/[0.05] bg-white/[0.018]"
         }`}
       >
-        {completed ? (
+        {blocked ? (
+          <XCircle className="h-3.5 w-3.5 text-red-300/60" />
+        ) : completed ? (
           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-300/60" />
         ) : active ? (
           <RefreshCw className="h-3.5 w-3.5 animate-spin text-indigo-200/70" />
@@ -705,17 +718,19 @@ function PipelineNode({
         )}
 
         {active && (
-          <span className="absolute inset-0 rounded-md border border-indigo-300/[0.08] animate-pulse" />
+          <span className="absolute inset-0 animate-pulse rounded-md border border-indigo-300/[0.08]" />
         )}
       </div>
 
       <span
         className={`text-[8px] font-medium transition-colors duration-500 ${
-          completed
-            ? "text-emerald-300/60"
-            : active
-              ? "text-indigo-200/80"
-              : "text-zinc-600"
+          blocked
+            ? "text-red-300/60"
+            : completed
+              ? "text-emerald-300/60"
+              : active
+                ? "text-indigo-200/80"
+                : "text-zinc-600"
         }`}
       >
         {label}

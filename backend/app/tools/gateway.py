@@ -24,6 +24,53 @@ ALLOWED_TOOLS = {
 }
 
 
+# Privileged actions are intentionally NOT registered.
+# They must be blocked by policy and must never execute here.
+BLOCKED_TOOLS = {
+    "grant_access",
+    "grant_admin_access",
+    "disable_security_controls",
+    "delete_records",
+}
+
+
+def _blocked_result(
+    tool_name: str,
+    reason: str,
+    message: str,
+) -> ToolResult:
+    """Create a standard fail-closed tool result."""
+
+    return ToolResult(
+        tool=tool_name,
+        success=False,
+        message=message,
+        state_changes={},
+        output={
+            "status": "blocked",
+            "reason": reason,
+        },
+    )
+
+
+def _parameter_text(
+    parameters: dict[str, Any],
+    key: str,
+) -> str:
+    """Return a clean parameter value or an empty string."""
+
+    value = parameters.get(key)
+
+    if value is None:
+        return ""
+
+    return str(value).strip()
+
+
+# =========================================================
+# CONTROLLED TOOL GATEWAY
+# =========================================================
+
 def execute_tool(
     tool_name: str,
     parameters: dict[str, Any] | None = None,
@@ -34,27 +81,45 @@ def execute_tool(
     This prototype uses deterministic mock IT tools.
     No real operating-system, university, company, or
     production infrastructure is modified.
+
+    Safety principles:
+    1. Only registered tools may execute.
+    2. Privileged tools are never registered.
+    3. Missing required parameters fail closed.
+    4. Every successful tool returns explicit state changes.
+    5. Unknown/unhandled tools fail closed.
     """
 
+    tool_name = (tool_name or "").strip()
     parameters = parameters or {}
+
+    # =====================================================
+    # EXPLICIT PRIVILEGED DENY
+    # =====================================================
+
+    if tool_name in BLOCKED_TOOLS:
+        return _blocked_result(
+            tool_name=tool_name,
+            reason="privileged_or_destructive_tool",
+            message=(
+                "Tool execution denied because the requested "
+                "operation is privileged or destructive and is "
+                "not available to the autonomous Level-1 agent."
+            ),
+        )
 
     # =====================================================
     # DEFAULT DENY
     # =====================================================
 
     if tool_name not in ALLOWED_TOOLS:
-        return ToolResult(
-            tool=tool_name,
-            success=False,
+        return _blocked_result(
+            tool_name=tool_name,
+            reason="unregistered_tool",
             message=(
                 "Tool execution denied because the requested "
                 "tool is not registered in the controlled gateway."
             ),
-            state_changes={},
-            output={
-                "status": "blocked",
-                "reason": "unregistered_tool",
-            },
         )
 
     # =====================================================
@@ -122,10 +187,20 @@ def execute_tool(
     # =====================================================
 
     if tool_name == "install_software":
-        software_name = parameters.get(
+        software_name = _parameter_text(
+            parameters,
             "software",
-            "approved_software",
         )
+
+        if not software_name:
+            return _blocked_result(
+                tool_name=tool_name,
+                reason="missing_software_parameter",
+                message=(
+                    "Software installation was blocked because "
+                    "no software name was provided."
+                ),
+            )
 
         return ToolResult(
             tool=tool_name,
@@ -150,10 +225,20 @@ def execute_tool(
     # =====================================================
 
     if tool_name == "request_application_access":
-        resource = parameters.get(
+        resource = _parameter_text(
+            parameters,
             "resource",
-            "requested_application",
         )
+
+        if not resource:
+            return _blocked_result(
+                tool_name=tool_name,
+                reason="missing_resource_parameter",
+                message=(
+                    "Application access was blocked because "
+                    "no application or resource was specified."
+                ),
+            )
 
         return ToolResult(
             tool=tool_name,
@@ -177,17 +262,16 @@ def execute_tool(
     # FAIL CLOSED
     # =====================================================
 
-    return ToolResult(
-        tool=tool_name,
-        success=False,
+    return _blocked_result(
+        tool_name=tool_name,
+        reason="unhandled_tool",
         message="Tool execution failed closed.",
-        state_changes={},
-        output={
-            "status": "blocked",
-            "reason": "unhandled_tool",
-        },
     )
 
+
+# =========================================================
+# API SERIALIZATION
+# =========================================================
 
 def tool_result_to_dict(
     result: ToolResult,

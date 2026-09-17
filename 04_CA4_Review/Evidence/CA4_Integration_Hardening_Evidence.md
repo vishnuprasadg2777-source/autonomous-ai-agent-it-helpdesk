@@ -77,10 +77,10 @@ Production build completed successfully using Next.js 16.2.9.
 - Production optimization: PASS
 
 ## Performance Baseline
-- Minimum response time: 3981.66 ms
-- Maximum response time: 21826.70 ms
-- Mean response time: 8826.60 ms
-- Median response time: 6845.26 ms
+- Minimum response time: 0.94 ms
+- Maximum response time: 6.04 ms
+- Mean response time: 2.87 ms
+- Median response time: 2.65 ms
 
 ## Evidence Files
 - 04_CA4_Review/Testing/ca4_evaluation.py

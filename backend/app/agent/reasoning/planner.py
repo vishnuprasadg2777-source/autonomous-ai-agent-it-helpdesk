@@ -23,6 +23,16 @@ class RemediationPlan:
         self.confidence = confidence
 
 
+SUPPORTED_ACTIONS = {
+    "restart_vpn_client",
+    "escalate_vpn_troubleshooting",
+    "reset_password",
+    "install_software",
+    "request_application_access",
+    "grant_admin_access",
+}
+
+
 def plan_to_dict(plan: RemediationPlan) -> dict[str, Any]:
     return {
         "action": plan.action,
@@ -39,6 +49,13 @@ def _expected_state_for_action(
     action: str | None,
     it_state: dict[str, str],
 ) -> dict[str, str]:
+    """
+    Generate the expected post-action state locally.
+
+    The LLM never controls this mapping. This prevents a malformed
+    or hallucinated LLM response from inventing an unsafe verification
+    target.
+    """
 
     if action == "restart_vpn_client":
         return {
@@ -82,47 +99,323 @@ def _expected_state_for_action(
     return {}
 
 
+def _normalize_risk(value: Any, default: str) -> str:
+    """
+    Accept only known risk levels from the LLM.
+    """
+
+    if isinstance(value, str):
+        normalized = value.strip().title()
+
+        if normalized in {"Low", "Medium", "High"}:
+            return normalized
+
+    return default
+
+
+def _normalize_confidence(
+    value: Any,
+    default: float,
+) -> float:
+    """
+    Keep confidence inside the valid 0..1 range.
+    """
+
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        return default
+
+    return max(0.0, min(1.0, confidence))
+
+
+def _normalize_authorization(
+    value: Any,
+    default: bool,
+) -> bool:
+    """
+    Normalize an LLM authorization flag without allowing arbitrary
+    values to propagate into policy evaluation.
+    """
+
+    if isinstance(value, bool):
+        return value
+
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+
+        if normalized in {
+            "true",
+            "yes",
+            "required",
+            "authorization_required",
+        }:
+            return True
+
+        if normalized in {
+            "false",
+            "no",
+            "not_required",
+            "none",
+        }:
+            return False
+
+    return default
+
+
+def _intent_to_action(
+    intent: str,
+    it_state: dict[str, str],
+) -> tuple[str | None, str, str, str, bool, float]:
+    """
+    Deterministically map the understood intent to the only action
+    family that is valid for that intent.
+
+    Returns:
+        action,
+        target,
+        rationale,
+        risk,
+        requires_authorization,
+        confidence
+    """
+
+    # ---------------------------------------------------------
+    # VPN
+    # ---------------------------------------------------------
+
+    if intent == "troubleshoot_vpn":
+        target = "VPN Client"
+
+        vpn_safe_conditions = (
+            it_state.get("vpn_client") == "disconnected"
+            and it_state.get("network") == "connected"
+            and it_state.get("vpn_gateway") == "operational"
+            and it_state.get("authentication") == "valid"
+        )
+
+        if vpn_safe_conditions:
+            return (
+                "restart_vpn_client",
+                target,
+                (
+                    "The endpoint network is connected, the VPN gateway "
+                    "is operational, authentication is valid, and the VPN "
+                    "client is disconnected. A controlled VPN client "
+                    "restart is therefore the appropriate candidate "
+                    "remediation."
+                ),
+                "Low",
+                True,
+                0.94,
+            )
+
+        return (
+            "escalate_vpn_troubleshooting",
+            target,
+            (
+                "The observed VPN environment does not satisfy all "
+                "conditions required for safe automated VPN client "
+                "restart. Human IT troubleshooting is required."
+            ),
+            "Low",
+            True,
+            0.90,
+        )
+
+    # ---------------------------------------------------------
+    # Password
+    # ---------------------------------------------------------
+
+    if intent == "reset_password":
+        return (
+            "reset_password",
+            "User Account",
+            (
+                "The request is a standard password-reset operation "
+                "supported by the controlled helpdesk workflow."
+            ),
+            "Low",
+            True,
+            0.92,
+        )
+
+    # ---------------------------------------------------------
+    # Software
+    # ---------------------------------------------------------
+
+    if intent == "install_software":
+        return (
+            "install_software",
+            it_state.get(
+                "requested_software",
+                "Requested Software",
+            ),
+            (
+                "The request identifies software installation as the "
+                "required operation. Installation must proceed through "
+                "the controlled tool gateway and applicable policy."
+            ),
+            "Medium",
+            True,
+            0.90,
+        )
+
+    # ---------------------------------------------------------
+    # Privileged access
+    # ---------------------------------------------------------
+
+    if intent == "request_privileged_access":
+        return (
+            "grant_admin_access",
+            it_state.get(
+                "requested_resource",
+                "Privileged Resource",
+            ),
+            (
+                "The request requires privileged administrative access. "
+                "The action is proposed only for policy evaluation and "
+                "must not bypass authorization or security controls."
+            ),
+            "High",
+            True,
+            0.95,
+        )
+
+    # ---------------------------------------------------------
+    # Standard application/resource access
+    # ---------------------------------------------------------
+
+    if intent in {
+        "request_access",
+        "request_application_access",
+    }:
+        return (
+            "request_application_access",
+            it_state.get(
+                "requested_resource",
+                "Requested Application",
+            ),
+            (
+                "The request requires standard application or resource "
+                "access. The access operation must be evaluated by the "
+                "policy engine before controlled execution."
+            ),
+            "Medium",
+            True,
+            0.90,
+        )
+
+    # ---------------------------------------------------------
+    # Unknown
+    # ---------------------------------------------------------
+
+    return (
+        None,
+        "IT Environment",
+        "",
+        "Medium",
+        True,
+        0.0,
+    )
+
+
 def _plan_from_llm(
     llm_plan: dict[str, Any],
+    *,
+    expected_action: str,
+    expected_target: str,
+    deterministic_rationale: str,
+    deterministic_risk: str,
+    deterministic_authorization: bool,
+    deterministic_confidence: float,
     it_state: dict[str, str],
 ) -> RemediationPlan | None:
+    """
+    Accept useful LLM reasoning only after validating it against the
+    deterministic intent-to-action decision.
 
-    action = llm_plan.get("action")
+    The LLM cannot change the action selected for the understood intent.
+    """
 
-    if not action:
+    llm_action = llm_plan.get("action")
+
+    # Never accept an action different from the action dictated by
+    # the understood intent.
+    if llm_action != expected_action:
+        return None
+
+    if llm_action not in SUPPORTED_ACTIONS:
         return None
 
     expected_state = _expected_state_for_action(
-        action,
+        expected_action,
         it_state,
     )
 
     if not expected_state:
         return None
 
+    target = llm_plan.get("target")
+
+    if not isinstance(target, str) or not target.strip():
+        target = expected_target
+
+    rationale = llm_plan.get("rationale")
+
+    if not isinstance(rationale, str) or not rationale.strip():
+        rationale = deterministic_rationale
+
+    # Risk and authorization remain bounded by the deterministic
+    # action policy. The LLM can suggest values, but it cannot lower
+    # the safety requirements of a known action.
+    llm_risk = _normalize_risk(
+        llm_plan.get("risk"),
+        deterministic_risk,
+    )
+
+    risk_order = {
+        "Low": 1,
+        "Medium": 2,
+        "High": 3,
+    }
+
+    if risk_order[llm_risk] < risk_order[deterministic_risk]:
+        risk = deterministic_risk
+    else:
+        risk = llm_risk
+
+    authorization = _normalize_authorization(
+        llm_plan.get("requires_authorization"),
+        deterministic_authorization,
+    )
+
+    # If deterministic policy requires authorization, the LLM can
+    # never turn that requirement off.
+    requires_authorization = (
+        deterministic_authorization or authorization
+    )
+
+    confidence = _normalize_confidence(
+        llm_plan.get("confidence"),
+        deterministic_confidence,
+    )
+
+    # Do not let an LLM claim a confidence higher than the
+    # deterministic confidence for the supported action.
+    confidence = min(
+        confidence,
+        deterministic_confidence,
+    )
+
     return RemediationPlan(
-        action=action,
-        target=llm_plan.get(
-            "target",
-            "IT Environment",
-        ),
-        rationale=llm_plan.get(
-            "rationale",
-            "Candidate remediation generated by the reasoning layer.",
-        ),
+        action=expected_action,
+        target=target,
+        rationale=rationale,
         expected_state=expected_state,
-        risk=llm_plan.get(
-            "risk",
-            "Medium",
-        ),
-        requires_authorization=llm_plan.get(
-            "requires_authorization",
-            True,
-        ),
-        confidence=llm_plan.get(
-            "confidence",
-            0.80,
-        ),
+        risk=risk,
+        requires_authorization=requires_authorization,
+        confidence=confidence,
     )
 
 
@@ -133,24 +426,54 @@ def generate_plan(
     knowledge_sources: list[Any],
 ) -> RemediationPlan | None:
     """
-    Generate a candidate remediation plan.
+    Generate a validated remediation plan.
 
-    PHOENIX first attempts LLM-based reasoning.
+    Architecture:
 
-    If the LLM is unavailable, returns an invalid candidate,
-    or produces an unsupported action, the deterministic
-    planner remains the safe fallback.
+        Understanding
+              ↓
+        deterministic intent/action boundary
+              ↓
+        optional LLM reasoning
+              ↓
+        validated plan
+              ↓
+        Policy
+              ↓
+        Tool Gateway
+              ↓
+        Verification
 
-    The planner only proposes an action.
+    The request text determines the intent before this function is
+    called. The ticket ID is never used to choose an action.
 
-    Policy decides whether the action is allowed.
-    Tool Gateway performs controlled execution.
-    Verification confirms the resulting IT state.
+    The LLM is advisory inside the reasoning stage. It cannot replace
+    the deterministic safety boundary or invent unsupported actions.
     """
 
-    # =========================================================
-    # 1. LLM REASONING
-    # =========================================================
+    # ---------------------------------------------------------
+    # 1. Determine the only valid action for this intent.
+    # ---------------------------------------------------------
+
+    (
+        expected_action,
+        expected_target,
+        deterministic_rationale,
+        deterministic_risk,
+        deterministic_authorization,
+        deterministic_confidence,
+    ) = _intent_to_action(
+        intent,
+        it_state,
+    )
+
+    # Unknown / unsupported intent.
+    if expected_action is None:
+        return None
+
+    # ---------------------------------------------------------
+    # 2. Try LLM reasoning.
+    # ---------------------------------------------------------
 
     llm_plan = generate_llm_plan(
         intent=intent,
@@ -162,178 +485,36 @@ def generate_plan(
     if llm_plan is not None:
         candidate = _plan_from_llm(
             llm_plan,
+            expected_action=expected_action,
+            expected_target=expected_target,
+            deterministic_rationale=deterministic_rationale,
+            deterministic_risk=deterministic_risk,
+            deterministic_authorization=deterministic_authorization,
+            deterministic_confidence=deterministic_confidence,
             it_state=it_state,
         )
 
         if candidate is not None:
             return candidate
 
-    # =========================================================
-    # 2. DETERMINISTIC FALLBACK
-    # =========================================================
+    # ---------------------------------------------------------
+    # 3. Deterministic fallback.
+    # ---------------------------------------------------------
 
-    action: str | None = None
-    target = "IT Environment"
-
-    rationale = (
-        "No validated LLM plan was available, so the deterministic "
-        "PHOENIX remediation rules were used."
+    expected_state = _expected_state_for_action(
+        expected_action,
+        it_state,
     )
 
-    risk = "Medium"
-    requires_authorization = True
-    confidence = 0.80
-
-    # =========================================================
-    # VPN TROUBLESHOOTING
-    # =========================================================
-
-    if intent == "troubleshoot_vpn":
-
-        target = "VPN Client"
-
-        if (
-            it_state.get("vpn_client") == "disconnected"
-            and it_state.get("network") == "connected"
-            and it_state.get("vpn_gateway") == "operational"
-            and it_state.get("authentication") == "valid"
-        ):
-            action = "restart_vpn_client"
-
-            rationale = (
-                "The endpoint network is connected, the VPN gateway "
-                "is operational, authentication is valid, and the VPN "
-                "client is disconnected. A controlled VPN client restart "
-                "is therefore the most appropriate candidate remediation."
-            )
-
-            risk = "Low"
-            requires_authorization = True
-            confidence = 0.94
-
-        else:
-            action = "escalate_vpn_troubleshooting"
-
-            rationale = (
-                "The observed VPN environment does not satisfy the "
-                "conditions for a safe automated VPN client restart. "
-                "The request should be escalated for human troubleshooting."
-            )
-
-            risk = "Low"
-            requires_authorization = True
-            confidence = 0.90
-
-    # =========================================================
-    # PASSWORD RESET
-    # =========================================================
-
-    elif intent == "reset_password":
-
-        action = "reset_password"
-        target = "User Account"
-
-        rationale = (
-            "The request is a standard password-reset operation "
-            "supported by the controlled helpdesk workflow."
-        )
-
-        risk = "Medium"
-        requires_authorization = True
-        confidence = 0.92
-
-    # =========================================================
-    # SOFTWARE INSTALLATION
-    # =========================================================
-
-    elif intent == "install_software":
-
-        action = "install_software"
-
-        target = it_state.get(
-            "requested_software",
-            "Requested Software",
-        )
-
-        rationale = (
-            "The request identifies software installation as the "
-            "required remediation. Installation must proceed through "
-            "the controlled tool gateway and applicable policy."
-        )
-
-        risk = "Medium"
-        requires_authorization = True
-        confidence = 0.90
-
-    # =========================================================
-    # PRIVILEGED ACCESS
-    # =========================================================
-
-    elif intent == "request_privileged_access":
-
-        action = "grant_admin_access"
-
-        target = it_state.get(
-            "requested_resource",
-            "Privileged Resource",
-        )
-
-        rationale = (
-            "The request requires privileged administrative access. "
-            "The action is proposed for policy evaluation but must "
-            "not bypass authorization controls."
-        )
-
-        risk = "High"
-        requires_authorization = True
-        confidence = 0.95
-
-    # =========================================================
-    # STANDARD APPLICATION ACCESS
-    #
-    # The understanding layer uses request_access.
-    # request_application_access is also accepted for compatibility
-    # with the LLM planner and existing workflow.
-    # =========================================================
-
-    elif intent in {
-        "request_access",
-        "request_application_access",
-    }:
-
-        action = "request_application_access"
-
-        target = it_state.get(
-            "requested_resource",
-            "Requested Application",
-        )
-
-        rationale = (
-            "The request requires standard application access. "
-            "The access request must be evaluated by the policy engine "
-            "before controlled execution."
-        )
-
-        risk = "Medium"
-        requires_authorization = True
-        confidence = 0.90
-
-    # =========================================================
-    # UNKNOWN REQUEST
-    # =========================================================
-
-    else:
+    if not expected_state:
         return None
 
     return RemediationPlan(
-        action=action,
-        target=target,
-        rationale=rationale,
-        expected_state=_expected_state_for_action(
-            action,
-            it_state,
-        ),
-        risk=risk,
-        requires_authorization=requires_authorization,
-        confidence=confidence,
+        action=expected_action,
+        target=expected_target,
+        rationale=deterministic_rationale,
+        expected_state=expected_state,
+        risk=deterministic_risk,
+        requires_authorization=deterministic_authorization,
+        confidence=deterministic_confidence,
     )
