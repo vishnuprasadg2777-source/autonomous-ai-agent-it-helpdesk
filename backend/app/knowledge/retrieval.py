@@ -1,4 +1,6 @@
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
+from typing import Protocol
 
 
 @dataclass
@@ -8,6 +10,8 @@ class KnowledgeSource:
     category: str
     content: str
     relevance: float
+    source: str = "PHOENIX local knowledge base"
+    metadata: dict[str, str] = field(default_factory=dict)
 
 
 KNOWLEDGE_BASE = [
@@ -83,25 +87,31 @@ KNOWLEDGE_BASE = [
 ]
 
 
-def retrieve_knowledge(
-    query: str,
-    category: str | None = None,
-    limit: int = 3,
-) -> list[KnowledgeSource]:
-    """
-    Retrieve relevant knowledge sources for an IT request.
+class RetrievalBackendUnavailable(RuntimeError):
+    """Raised by an optional retrieval backend when it cannot be used."""
 
-    This is the initial deterministic retrieval layer.
-    It provides the same interface that can later be backed by
-    embeddings and vector search without changing the agent API.
-    """
 
-    text = query.strip().lower()
+class KnowledgeRetriever(Protocol):
+    def retrieve(
+        self, query: str, category: str | None = None, limit: int = 3
+    ) -> list[KnowledgeSource]: ...
 
-    if not text:
-        return []
 
-    keyword_groups = {
+class DeterministicKeywordRetriever:
+    """Default local retriever. It does not require embeddings or a vector DB."""
+
+    name = "deterministic-keyword"
+
+    def retrieve(
+        self, query: str, category: str | None = None, limit: int = 3
+    ) -> list[KnowledgeSource]:
+
+        text = query.strip().lower()
+
+        if not text:
+            return []
+
+        keyword_groups = {
         "Network": [
             "vpn",
             "network",
@@ -130,52 +140,99 @@ def retrieve_knowledge(
         ],
     }
 
-    scores: list[tuple[KnowledgeSource, float]] = []
+        scores: list[tuple[KnowledgeSource, float]] = []
 
-    for source in KNOWLEDGE_BASE:
-        score = source.relevance * 0.35
+        for source in KNOWLEDGE_BASE:
+            score = source.relevance * 0.35
 
-        searchable_text = (
-            f"{source.title} "
-            f"{source.category} "
-            f"{source.content}"
-        ).lower()
+            searchable_text = (
+                f"{source.title} "
+                f"{source.category} "
+                f"{source.content}"
+            ).lower()
 
-        if category and category.lower() in source.category.lower():
-            score += 0.35
+            if category and category.lower() in source.category.lower():
+                score += 0.35
 
-        for group, keywords in keyword_groups.items():
-            if category and group.lower() != category.lower():
-                continue
+            for group, keywords in keyword_groups.items():
+                if category and group.lower() != category.lower():
+                    continue
 
-            for keyword in keywords:
-                if keyword in text and keyword in searchable_text:
-                    score += 0.12
+                for keyword in keywords:
+                    if keyword in text and keyword in searchable_text:
+                        score += 0.12
 
-        for word in text.split():
-            if len(word) >= 4 and word in searchable_text:
-                score += 0.02
+            for word in text.split():
+                if len(word) >= 4 and word in searchable_text:
+                    score += 0.02
 
-        score = min(score, 0.99)
+            score = min(score, 0.99)
 
-        scores.append((source, score))
+            scores.append((source, score))
 
-    scores.sort(
-        key=lambda item: item[1],
-        reverse=True,
-    )
-
-    results: list[KnowledgeSource] = []
-
-    for source, score in scores[:limit]:
-        results.append(
-            KnowledgeSource(
-                id=source.id,
-                title=source.title,
-                category=source.category,
-                content=source.content,
-                relevance=round(score, 2),
-            )
+        scores.sort(
+            key=lambda item: item[1],
+            reverse=True,
         )
 
-    return results
+        results: list[KnowledgeSource] = []
+
+        for source, score in scores[:limit]:
+            results.append(
+                KnowledgeSource(
+                    id=source.id,
+                    title=source.title,
+                    category=source.category,
+                    content=source.content,
+                    relevance=round(score, 2),
+                    source=source.source,
+                    metadata={
+                        **source.metadata,
+                        "retrieval_backend": self.name,
+                    },
+                )
+            )
+
+        return results
+
+
+class EmbeddingVectorRetriever:
+    """Optional extension point; no model or vector database is bundled."""
+
+    name = "embedding-vector"
+
+    def retrieve(
+        self, query: str, category: str | None = None, limit: int = 3
+    ) -> list[KnowledgeSource]:
+        raise RetrievalBackendUnavailable(
+            "Embedding/vector retrieval requires a configured model and vector store."
+        )
+
+
+def _configured_retriever() -> KnowledgeRetriever:
+    if os.getenv("PHOENIX_RETRIEVAL_BACKEND", "keyword").lower() == "embedding":
+        return EmbeddingVectorRetriever()
+    return DeterministicKeywordRetriever()
+
+
+def retrieve_knowledge(
+    query: str,
+    category: str | None = None,
+    limit: int = 3,
+) -> list[KnowledgeSource]:
+    """Retrieve knowledge with a safe deterministic fallback.
+
+    ``PHOENIX_RETRIEVAL_BACKEND=embedding`` reserves an optional production
+    integration boundary. Until a model and vector store are configured, the
+    agent deliberately uses the deterministic local retriever instead.
+    """
+
+    try:
+        return _configured_retriever().retrieve(query, category, limit)
+    except RetrievalBackendUnavailable:
+        fallback_results = DeterministicKeywordRetriever().retrieve(
+            query, category, limit
+        )
+        for source in fallback_results:
+            source.metadata["fallback_reason"] = "optional_backend_unavailable"
+        return fallback_results

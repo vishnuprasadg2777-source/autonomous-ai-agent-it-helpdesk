@@ -51,3 +51,6 @@ coverage/
 *.swp
 *.swo
 *~
+
+# Local SQLite runtime data
+backend/.data/

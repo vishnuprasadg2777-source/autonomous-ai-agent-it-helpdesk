@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
@@ -11,6 +10,10 @@ from backend.app.agent.reasoning.planner import (
 )
 from backend.app.agent.understanding import understand_request
 from backend.app.knowledge.retrieval import retrieve_knowledge
+from backend.app.persistence.repository import (
+    get_repositories,
+    record_agent_run,
+)
 from backend.app.policy.engine import (
     evaluate_policy,
     policy_to_dict,
@@ -91,37 +94,37 @@ class AgentResponse(BaseModel):
 STAGE_DEFINITIONS = [
     (
         "understand",
-        "Request understanding",
+        "01 Understand",
         "Identify the user's intent, category, priority and relevant entities.",
     ),
     (
         "retrieve",
-        "Knowledge retrieval",
+        "02 Retrieve",
         "Retrieve relevant IT helpdesk procedures from the knowledge base.",
     ),
     (
         "observe",
-        "IT state observation",
+        "03 Observe",
         "Observe the current state of the relevant IT environment.",
     ),
     (
         "reason",
-        "Reasoning & planning",
+        "04 Reason",
         "Generate a candidate remediation plan from the request, knowledge and observed state.",
     ),
     (
         "policy",
-        "Policy evaluation",
+        "05 Policy",
         "Evaluate authorization, risk and policy compliance before taking action.",
     ),
     (
         "execute",
-        "Controlled execution",
+        "06 Execute",
         "Execute an approved action through the controlled tool gateway.",
     ),
     (
         "verify",
-        "Verification",
+        "07 Verify",
         "Compare the observed post-action state with the expected state.",
     ),
 ]
@@ -160,46 +163,115 @@ def make_stages(
 
 def update_ticket_status(
     ticket_id: str | None,
-    status: Literal["open", "verifying", "waiting", "resolved"],
+    status: Literal[
+        "open",
+        "in_progress",
+        "verifying",
+        "waiting",
+        "resolved",
+        "escalated",
+    ],
 ) -> bool:
     """
-    Persist a ticket status change through the Ticket API.
+    Persist an agent-driven ticket status change.
 
-    The ticket API is the source of truth for:
-    - ticket status
-    - exact update timestamp
-
-    This avoids relying on a separate in-memory copy
-    of the ticket list.
+    The persistence repository is used directly rather than making
+    the backend call its own HTTP API. This keeps ticket state and
+    agent execution inside the same persistence boundary.
     """
 
     if not ticket_id or ticket_id == "INC-DEMO":
         return True
 
-    url = (
-        "http://127.0.0.1:8000"
-        f"/api/tickets/{ticket_id}/status"
+    repository = get_repositories()
+
+    existing_ticket = repository.get_ticket(ticket_id)
+
+    if existing_ticket is None:
+        return False
+
+    previous_status = existing_ticket.status
+
+    # Idempotent status update.
+    if previous_status == status:
+        return True
+
+    # A previously resolved ticket represents a new request.
+    # Reopen it through the repository before moving it into
+    # the verification workflow.
+    if previous_status == "resolved" and status == "verifying":
+        reopened_ticket = repository.transition(
+            ticket_id=ticket_id,
+            status="in_progress",
+        )
+
+        if reopened_ticket is None:
+            return False
+
+        repository.append(
+            event_type="ticket_status_changed",
+            ticket_id=ticket_id,
+            payload={
+                "from_status": previous_status,
+                "to_status": reopened_ticket.status,
+                "assignee": reopened_ticket.assignee,
+                "timestamp": reopened_ticket.updated_at,
+                "source": "agent",
+                "reason": "reopened_for_new_agent_request",
+            },
+        )
+
+        previous_status = reopened_ticket.status
+
+    updated_ticket = repository.transition(
+        ticket_id=ticket_id,
+        status=status,
     )
 
-    try:
-        response = httpx.patch(
-            url,
-            json={"status": status},
-            timeout=5.0,
-        )
-        response.raise_for_status()
-        return True
-    except httpx.HTTPError:
+    if updated_ticket is None:
         return False
+
+    repository.append(
+        event_type="ticket_status_changed",
+        ticket_id=ticket_id,
+        payload={
+            "from_status": previous_status,
+            "to_status": updated_ticket.status,
+            "assignee": updated_ticket.assignee,
+            "timestamp": updated_ticket.updated_at,
+            "source": "agent",
+        },
+    )
+
+    return True
+
+
+def persist_agent_response(
+    request: str,
+    response: AgentResponse,
+) -> AgentResponse:
+    """
+    Persist a secret-free structured record of the agent execution.
+
+    Persistence failures must never change the user's agent result.
+    """
+
+    try:
+        record_agent_run(
+            request=request,
+            response=response.model_dump(),
+        )
+    except Exception:
+        # Audit persistence must not make an otherwise successful
+        # helpdesk execution fail.
+        pass
+
+    return response
 
 
 @router.post("/run", response_model=AgentResponse)
 def run_agent(payload: AgentRequest) -> AgentResponse:
     ticket_id = payload.ticket_id or "INC-DEMO"
-
-    # =====================================================
-    # EXECUTION TRACE
-    # =====================================================
 
     trace: list[AgentTrace] = []
     attempt = 1
@@ -220,10 +292,6 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             )
         )
 
-    # =====================================================
-    # 1. REQUEST UNDERSTANDING
-    # =====================================================
-
     understanding = understand_request(payload.request)
 
     understanding_dict = {
@@ -242,10 +310,6 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             f"with category '{understanding.category}'."
         ),
     )
-
-    # =====================================================
-    # 2. KNOWLEDGE RETRIEVAL
-    # =====================================================
 
     knowledge_sources = retrieve_knowledge(
         payload.request,
@@ -273,20 +337,8 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
         ),
     )
 
-    # =====================================================
-    # 3. IT STATE OBSERVATION
-    # =====================================================
-
     it_state = observe_it_state(understanding.category)
     it_state_dict = state_to_dict(it_state)
-
-    # -----------------------------------------------------
-    # Inject request-specific entities into the World Model.
-    #
-    # This allows the planner and controlled tools to know
-    # which software or resource the user requested without
-    # changing the underlying deterministic environment.
-    # -----------------------------------------------------
 
     software_name = understanding.entities.get("software")
 
@@ -303,10 +355,6 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
         status="completed",
         message="Current IT environment state was observed.",
     )
-
-    # =====================================================
-    # 4. REASONING & PLANNING
-    # =====================================================
 
     plan = generate_plan(
         intent=understanding.intent,
@@ -327,7 +375,7 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
 
         update_ticket_status(ticket_id, "open")
 
-        return AgentResponse(
+        response = AgentResponse(
             ticket_id=ticket_id,
             status="escalated",
             message=(
@@ -349,6 +397,8 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             trace=trace,
         )
 
+        return persist_agent_response(payload.request, response)
+
     plan_dict = plan_to_dict(plan)
 
     add_trace(
@@ -360,10 +410,6 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             f"risk '{plan.risk}' and confidence {plan.confidence:.2f}."
         ),
     )
-
-    # =====================================================
-    # 5. POLICY / AUTHORIZATION / RISK
-    # =====================================================
 
     policy = evaluate_policy(
         action=plan.action,
@@ -385,9 +431,9 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             ),
         )
 
-        update_ticket_status(ticket_id, "open")
+        update_ticket_status(ticket_id, "escalated")
 
-        return AgentResponse(
+        response = AgentResponse(
             ticket_id=ticket_id,
             status="escalated",
             message=(
@@ -412,6 +458,8 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             trace=trace,
         )
 
+        return persist_agent_response(payload.request, response)
+
     if policy.decision == "approval_required":
         add_trace(
             stage="policy",
@@ -425,7 +473,7 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
 
         update_ticket_status(ticket_id, "waiting")
 
-        return AgentResponse(
+        response = AgentResponse(
             ticket_id=ticket_id,
             status="escalated",
             message=(
@@ -450,6 +498,8 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             trace=trace,
         )
 
+        return persist_agent_response(payload.request, response)
+
     add_trace(
         stage="policy",
         status="completed",
@@ -459,10 +509,6 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             f"with risk level '{plan.risk}'."
         ),
     )
-
-    # =====================================================
-    # 6. CONTROLLED TOOL EXECUTION
-    # =====================================================
 
     ticket_update_success = update_ticket_status(
         ticket_id,
@@ -480,7 +526,7 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             ),
         )
 
-        return AgentResponse(
+        response = AgentResponse(
             ticket_id=ticket_id,
             status="escalated",
             message=(
@@ -505,6 +551,8 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             policy=policy_dict,
             trace=trace,
         )
+
+        return persist_agent_response(payload.request, response)
 
     add_trace(
         stage="execute",
@@ -536,7 +584,7 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
 
         update_ticket_status(ticket_id, "open")
 
-        return AgentResponse(
+        response = AgentResponse(
             ticket_id=ticket_id,
             status="escalated",
             message=(
@@ -563,6 +611,8 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             trace=trace,
         )
 
+        return persist_agent_response(payload.request, response)
+
     add_trace(
         stage="execute",
         status="completed",
@@ -571,10 +621,6 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             f"Controlled action '{plan.action}' executed successfully."
         ),
     )
-
-    # =====================================================
-    # 7. UPDATE WORLD MODEL AFTER TOOL EXECUTION
-    # =====================================================
 
     observed_state = dict(it_state_dict)
     observed_state.update(tool_result.state_changes)
@@ -592,10 +638,6 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             "observed state and tool state changes."
         ),
     )
-
-    # =====================================================
-    # 8. VERIFICATION
-    # =====================================================
 
     add_trace(
         stage="verify",
@@ -627,7 +669,7 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
 
         update_ticket_status(ticket_id, "open")
 
-        return AgentResponse(
+        response = AgentResponse(
             ticket_id=ticket_id,
             status="escalated",
             message=(
@@ -656,6 +698,8 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             trace=trace,
         )
 
+        return persist_agent_response(payload.request, response)
+
     add_trace(
         stage="verify",
         status="completed",
@@ -665,10 +709,6 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             "the expected remediation state."
         ),
     )
-
-    # =====================================================
-    # 9. RESOLUTION
-    # =====================================================
 
     ticket_updated = update_ticket_status(
         ticket_id,
@@ -686,7 +726,7 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             ),
         )
 
-        return AgentResponse(
+        response = AgentResponse(
             ticket_id=ticket_id,
             status="escalated",
             message=(
@@ -717,6 +757,8 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
             trace=trace,
         )
 
+        return persist_agent_response(payload.request, response)
+
     add_trace(
         stage="verify",
         status="completed",
@@ -727,7 +769,7 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
         ),
     )
 
-    return AgentResponse(
+    response = AgentResponse(
         ticket_id=ticket_id,
         status="resolved",
         message=(
@@ -756,6 +798,8 @@ def run_agent(payload: AgentRequest) -> AgentResponse:
         verification=verification_dict,
         trace=trace,
     )
+
+    return persist_agent_response(payload.request, response)
 
 
 @router.post("/run/demo", response_model=AgentResponse)
