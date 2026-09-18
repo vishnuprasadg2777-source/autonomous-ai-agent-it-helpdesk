@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import {
   Activity,
   ArrowLeft,
@@ -31,7 +31,10 @@ export default function TicketDetailPage({
 }: {
   params: Promise<{ ticketId: string }>;
 }) {
-  const [ticketId, setTicketId] = useState("");
+  const resolvedParams = use(params);
+  const routeTicketId = resolvedParams.ticketId;
+
+  const [ticketId, setTicketId] = useState(routeTicketId);
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [result, setResult] = useState<AgentRunResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,14 +58,10 @@ export default function TicketDetailPage({
 
     async function loadTicket() {
       try {
-        const resolvedParams = await params;
-
-        if (cancelled) return;
-
-        setTicketId(resolvedParams.ticketId);
+        setTicketId(routeTicketId);
         setError("");
 
-        const data = await getTicket(resolvedParams.ticketId);
+        const data = await getTicket(routeTicketId);
 
         if (!cancelled) {
           setTicket(data);
@@ -85,7 +84,7 @@ export default function TicketDetailPage({
     return () => {
       cancelled = true;
     };
-  }, [params]);
+  }, [routeTicketId]);
 
   async function refreshTicket() {
     if (!ticketId) return;
@@ -475,7 +474,9 @@ export default function TicketDetailPage({
 
                   <InfoRow
                     label="Confidence"
-                    value={`${(result.understanding.confidence * 100).toFixed(0)}%`}
+                    value={`${(
+                      result.understanding.confidence * 100
+                    ).toFixed(0)}%`}
                   />
 
                   {Object.entries(result.understanding.entities).length > 0 && (

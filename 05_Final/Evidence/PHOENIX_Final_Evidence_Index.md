@@ -15,7 +15,7 @@ Assistant Professor, School of Computer Science and Engineering
 ---
 # 1. Purpose
 This document provides the final evidence index for the PHOENIX IT HELPDESK project.
-The evidence demonstrates the implementation, testing, safety behavior, persistence, auditability, API functionality, frontend build verification, and CA-01 to CA-04 project progress.
+The evidence demonstrates the implementation, testing, safety behavior, persistence, auditability, API functionality, frontend build verification, containerization, and CA-01 to CA-04 project progress.
 ---
 # 2. Final Project Structure
 ```text
@@ -35,6 +35,8 @@ PHOENIX IT HELPDESK
 │
 ├── backend/
 ├── frontend/
+├── docker-compose.yml
+├── .dockerignore
 ├── .gitignore
 └── README.md
 
@@ -74,6 +76,18 @@ Contains:
 
 These documents establish the research gap, proposed system architecture, objectives, and planned implementation.
 
+The selected architecture includes:
+
+* Qwen2.5-3B-Instruct through Ollama
+* BGE-small-en-v1.5 embeddings
+* ChromaDB
+* PostgreSQL
+* Python agent logic
+* FastAPI
+* Controlled IT tools / mock IT environment
+* Docker
+* Pytest
+
 ⸻
 
 5. CA-03 Implementation Evidence
@@ -92,7 +106,7 @@ The CA-03 documentation records the implementation of the autonomous IT helpdesk
 
 5.3 CA-03 Functional Testing
 
-Relevant evidence includes:
+Relevant evidence:
 
 03_CA3_Review/Testing/
 
@@ -136,8 +150,6 @@ Result
 
 Baseline pass rate: 100%
 
-Test cases:
-
 ID	Scenario	Result
 CA4-TC-001	VPN connectivity issue	PASS
 CA4-TC-002	Password reset	PASS
@@ -145,6 +157,14 @@ CA4-TC-003	Software installation	PASS
 CA4-TC-004	Application access	PASS
 CA4-TC-005	Privileged access safety	PASS
 CA4-TC-006	Unsupported request safety	PASS
+
+Recorded evaluation metrics:
+
+* Minimum response time: 7038.26 ms
+* Maximum response time: 9459.66 ms
+* Mean response time: 8575.99 ms
+* Median response time: 8734.11 ms
+* Pass rate: 100%
 
 ⸻
 
@@ -243,6 +263,7 @@ A normal VPN troubleshooting run demonstrated the complete seven-stage workflow.
 Example:
 
 Request:
+
 VPN connectivity issue
 
 Observed workflow:
@@ -267,7 +288,7 @@ restart_vpn_client
 
 was allowed by policy and executed through the controlled tool layer.
 
-The post-action state was then verified.
+The post-action state was then verified successfully.
 
 ⸻
 
@@ -275,7 +296,7 @@ The post-action state was then verified.
 
 The agent maintains a distinction between:
 
-PRE-ACTION IT state
+PRE-ACTION IT State
 
 Used during observation and planning.
 
@@ -287,7 +308,7 @@ Example state includes:
 * Authentication valid
 * Endpoint operational
 
-POST-ACTION IT state
+POST-ACTION IT State
 
 Recorded after controlled execution.
 
@@ -299,21 +320,27 @@ Verification
 
 The verification stage compares the expected outcome with the observed post-action state.
 
+A successful verification produces:
+
+status: verified
+verified: true
+differences: {}
+
 ⸻
 
 15. Policy Evidence
 
 The policy engine determines whether a planned action may proceed.
 
-Examples:
-
 Request	Action	Policy Result
 VPN issue	restart_vpn_client	Allowed
 Password reset	reset_password	Allowed
-Software installation	install_software	Allowed
+Approved software installation	install_software	Allowed
 Application access	request_application_access	Allowed
 Privileged access	grant_admin_access	Blocked
 Unsupported request	No tool action	Escalated
+
+Software installation is additionally subject to an approved-software allowlist.
 
 ⸻
 
@@ -327,6 +354,13 @@ The gateway provides controlled execution rather than allowing the language mode
 
 Safety-sensitive actions require policy approval before execution.
 
+The tool layer provides controlled operations for supported IT workflows such as:
+
+* VPN restart
+* Password reset
+* Software installation
+* Application access
+
 ⸻
 
 17. Persistence Evidence
@@ -335,13 +369,21 @@ Persistence is implemented through:
 
 backend/app/persistence/repository.py
 
-The project supports local SQLite persistence.
+The persistence layer supports local development persistence and PostgreSQL-backed deployment.
 
-Runtime data is stored under:
+The Dockerized project uses PostgreSQL through the postgres service.
 
-backend/.data/
+Docker PostgreSQL configuration includes:
 
-This runtime directory is excluded from Git through .gitignore.
+Database: phoenix_helpdesk
+User: phoenix
+Container service: postgres
+Host port: 5433
+Container port: 5432
+
+The project also retains support for local development persistence where configured.
+
+Runtime data and development artifacts are kept outside the source-control workflow as appropriate.
 
 ⸻
 
@@ -503,11 +545,21 @@ Privileged access is subject to authorization and safety policy.
 
 24. Knowledge Retrieval Evidence
 
-The current implementation includes deterministic keyword-based knowledge retrieval.
+The knowledge layer provides IT support information used to ground the agent’s reasoning.
 
-The knowledge base contains IT support information used to ground the agent’s reasoning.
+The implementation includes deterministic keyword-based retrieval for the supported prototype workflows.
 
-An embedding retrieval backend interface is present for future expansion, but a production vector database or embedding-based retrieval deployment is not claimed as completed functionality.
+The project architecture also includes embedding-based retrieval components using:
+
+BGE-small-en-v1.5
+
+and ChromaDB as the vector-store component.
+
+ChromaDB data is configured for persistent storage in the Dockerized environment.
+
+The current prototype therefore demonstrates both the deterministic retrieval path and the architecture required for embedding-based vector retrieval.
+
+A fully enterprise-scale production knowledge platform is not claimed.
 
 ⸻
 
@@ -515,25 +567,68 @@ An embedding retrieval backend interface is present for future expansion, but a 
 
 The reasoning layer supports LLM-assisted planning.
 
-The implementation includes integration support for OpenAI through environment-based API configuration and a deterministic fallback.
+The implementation supports:
 
-The project can therefore operate with deterministic planning when an external LLM is unavailable.
+Ollama
+Qwen2.5-3B-Instruct
+
+for local LLM-assisted planning.
+
+The implementation also contains support for OpenAI through environment-based API configuration.
+
+The planner uses structured candidate-plan validation and falls back to deterministic planning when the configured LLM is unavailable or produces an invalid response.
+
+This provides an operational fallback path for reliable prototype execution.
 
 Secrets such as API keys are kept outside the repository.
 
 ⸻
 
-26. Reproducibility
+26. Docker and Containerization Evidence
 
-Backend:
+The project includes Docker-based deployment configuration:
+
+docker-compose.yml
+backend/Dockerfile
+frontend/Dockerfile
+
+The Docker Compose architecture contains:
+
+PostgreSQL
+     ↓
+Backend / FastAPI
+     ↓
+Frontend / Next.js
+
+The backend is configured to communicate with the host Ollama service when Ollama is used as the local LLM provider.
+
+The Dockerized architecture also includes persistent volumes for:
+
+* PostgreSQL data
+* ChromaDB data
+
+The containerized configuration provides a reproducible prototype deployment environment.
+
+⸻
+
+27. Reproducibility
+
+Backend
 
 cd /Users/vishnu/Documents/AUTONOMOUS-IT-HELPDESK
 python -m uvicorn backend.app.main:app --reload --port 8000
 
-Frontend:
+Frontend
 
 cd /Users/vishnu/Documents/AUTONOMOUS-IT-HELPDESK/frontend
 npm run dev
+
+Docker
+
+cd /Users/vishnu/Documents/AUTONOMOUS-IT-HELPDESK
+docker compose up -d
+
+Development URLs
 
 Frontend:
 
@@ -545,17 +640,17 @@ http://127.0.0.1:8000
 
 ⸻
 
-27. Repository Verification
+28. Repository Verification
 
 The project repository is maintained on GitHub:
 
 autonomous-ai-agent-it-helpdesk
 
-The repository contains the CA-01 through CA-04 review material, backend implementation, frontend implementation, documentation, testing evidence, and final project structure.
+The repository contains the CA-01 through CA-04 review material, backend implementation, frontend implementation, documentation, testing evidence, Docker configuration, and final project structure.
 
 ⸻
 
-28. Final Evidence Summary
+29. Final Evidence Summary
 
 Evidence Area	Status
 CA-01 documentation	Available
@@ -563,6 +658,7 @@ CA-02 documentation	Available
 CA-03 implementation	Available
 CA-04 implementation	Available
 Baseline evaluation	6/6 PASS
+Baseline pass rate	100%
 Safety evaluation	2/2 PASS
 Unsafe tool executions	0
 False-action rate	0.0%
@@ -572,14 +668,23 @@ OpenAPI	PASS
 Malformed request handling	PASS
 Destructive request protection	PASS
 Privileged access protection	PASS
+Policy enforcement	Implemented
+Controlled tool gateway	Implemented
+Ticket lifecycle	Implemented
 Persistence	Implemented
 Audit trail	Implemented
+LLM-assisted planning	Implemented
+Ollama / Qwen integration	Implemented
+ChromaDB integration	Configured
+BGE-small embeddings	Integrated
+PostgreSQL container	Implemented
+Docker Compose	Implemented
 Frontend build	PASS
 Static pages	14/14
 
 ⸻
 
-29. Evidence Interpretation
+30. Evidence Interpretation
 
 The evidence demonstrates a functional autonomous IT helpdesk prototype with:
 
@@ -587,6 +692,7 @@ The evidence demonstrates a functional autonomous IT helpdesk prototype with:
 * knowledge retrieval,
 * IT-state observation,
 * reasoning and planning,
+* LLM-assisted planning,
 * policy enforcement,
 * controlled tool execution,
 * post-action verification,
@@ -595,31 +701,36 @@ The evidence demonstrates a functional autonomous IT helpdesk prototype with:
 * auditability,
 * API validation,
 * frontend integration,
+* Docker-based deployment configuration,
+* PostgreSQL persistence,
+* ChromaDB vector-store integration,
 * and safety handling for privileged and destructive requests.
 
 The implementation should be presented as a validated academic prototype rather than a fully deployed enterprise production system.
 
 ⸻
 
-30. Known Limitations
+31. Known Limitations
 
-The following are not claimed as completed production capabilities:
+The following are not claimed as completed enterprise production capabilities:
 
 * Live ServiceNow/Jira enterprise integration
 * Enterprise SSO
-* Production-grade vector database deployment
-* Full production monitoring infrastructure
+* Enterprise-scale knowledge management
+* Production-grade monitoring and observability infrastructure
 * Enterprise-scale secrets management
 * Unrestricted real-world IT administration
 * Production deployment across organizational infrastructure
+* Enterprise-scale high-availability architecture
+* Full production governance and compliance integration
 
-These are future engineering and deployment areas.
+These remain future engineering and deployment areas.
 
 ⸻
 
-31. Final Conclusion
+32. Final Conclusion
 
-The final evidence package demonstrates the progression of PHOENIX IT HELPDESK from problem definition and research through implementation, testing, safety hardening, persistence, auditability, and frontend integration.
+The final evidence package demonstrates the progression of PHOENIX IT HELPDESK from problem definition and research through implementation, testing, safety hardening, persistence, auditability, LLM-assisted reasoning, controlled execution, Docker-based deployment configuration, and frontend integration.
 
 The evidence provides traceable support for the implemented autonomous workflow and its safety controls.
 

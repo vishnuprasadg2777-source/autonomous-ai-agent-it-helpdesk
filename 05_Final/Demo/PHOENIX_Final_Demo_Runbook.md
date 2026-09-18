@@ -1,3 +1,9 @@
+Below is the complete updated Demo Runbook. Replace the entire contents of:
+
+/Users/vishnu/Documents/AUTONOMOUS-IT-HELPDESK/05_Final/Demo/PHOENIX_Final_Demo_Runbook.md
+
+with this:
+
 # PHOENIX IT HELPDESK
 ## Final Demo Runbook
 **Project:** PHOENIX IT HELPDESK
@@ -15,19 +21,47 @@ The demonstration should show both:
 1. A normal IT request that is safely executed.
 2. A privileged request that is blocked and escalated.
 ---
-# 2. Start the Backend
-Open Terminal and run:
+# 2. Start the Required Local Services
+PHOENIX uses local PostgreSQL persistence and local Qwen2.5-3B-Instruct model execution through Ollama.
+Before starting the backend, ensure PostgreSQL is running:
 ```bash
+brew services start postgresql@17
+
+Verify Ollama and the Qwen model:
+
+ollama list
+
+Expected model:
+
+qwen2.5:3b
+
+The semantic retrieval layer uses BGE-small-en-v1.5 with ChromaDB. ChromaDB storage is initialized automatically by the backend when semantic retrieval is used.
+
+⸻
+
+3. Start the Backend
+
+Open Terminal and run:
+
 cd /Users/vishnu/Documents/AUTONOMOUS-IT-HELPDESK
-python -m uvicorn backend.app.main:app --reload --port 8000
+backend/.venv/bin/uvicorn backend.app.main:app --reload --port 8000
 
 Expected result:
 
 Uvicorn running on http://127.0.0.1:8000
 
+The verified local backend uses:
+
+* FastAPI
+* PostgreSQL
+* Qwen2.5-3B-Instruct through Ollama
+* BGE-small-en-v1.5
+* ChromaDB
+* Controlled IT tools
+
 ⸻
 
-3. Verify Backend Health
+4. Verify Backend Health
 
 Open another Terminal:
 
@@ -42,7 +76,7 @@ Expected response:
 
 ⸻
 
-4. Start the Frontend
+5. Start the Frontend
 
 Open another Terminal:
 
@@ -55,7 +89,7 @@ http://localhost:3000
 
 ⸻
 
-5. Demo Scenario 1 — Normal VPN Request
+6. Demo Scenario 1 — Normal VPN Request
 
 Use the Agent interface.
 
@@ -71,19 +105,35 @@ The agent identifies the request as a VPN troubleshooting problem.
 
 Stage 02 — Retrieve
 
-Relevant IT support knowledge is retrieved.
+The semantic retrieval layer searches the helpdesk knowledge base using BGE-small-en-v1.5 embeddings and ChromaDB.
+
+Relevant sources may include:
+
+* KB-021 – VPN Connectivity Troubleshooting
+* KB-014 – VPN Client Connection Procedure
+* KB-008 – Remote Access Service Requirements
 
 Stage 03 — Observe
 
 The current IT state is inspected.
 
+Example pre-action state:
+
+VPN Client: disconnected
+Network: connected
+VPN Gateway: operational
+Authentication: valid
+Endpoint: operational
+
 Stage 04 — Reason
 
-The agent generates an action plan.
+Qwen2.5-3B-Instruct running locally through Ollama generates a candidate action plan.
 
 Example:
 
 restart_vpn_client
+
+The candidate plan is validated before it proceeds to policy evaluation.
 
 Stage 05 — Policy
 
@@ -97,13 +147,17 @@ Stage 06 — Execute
 
 The controlled tool gateway executes the permitted action.
 
+Expected tool:
+
+restart_vpn_client
+
 Stage 07 — Verify
 
 The post-action state is checked.
 
 Expected:
 
-VPN client → connected
+VPN Client → connected
 
 The ticket should reach:
 
@@ -111,7 +165,7 @@ resolved
 
 ⸻
 
-6. Demo Scenario 2 — Privileged Access Safety
+7. Demo Scenario 2 — Privileged Access Safety
 
 Use the Agent interface with:
 
@@ -125,7 +179,7 @@ Request classified as privileged access.
 
 Retrieve
 
-Relevant security and access policies are retrieved.
+Relevant access and security knowledge is retrieved.
 
 Observe
 
@@ -153,7 +207,7 @@ Expected:
 
 No tool execution
 
-Verify / Final Handling
+Final Handling
 
 The request is escalated.
 
@@ -161,9 +215,14 @@ Expected ticket state:
 
 escalated
 
+Important demonstration point:
+
+Reasoning proposes.
+Policy authorizes or blocks.
+
 ⸻
 
-7. Demo Scenario 3 — Unsupported Request
+8. Demo Scenario 3 — Unsupported / Destructive Request
 
 Use:
 
@@ -176,11 +235,11 @@ Expected behavior:
 * Request is escalated or safely rejected.
 * Production data is not modified.
 
-This demonstrates defensive behavior against destructive requests.
+This demonstrates defensive behavior against unsupported and destructive requests.
 
 ⸻
 
-8. Ticket Demonstration
+9. Ticket Demonstration
 
 Open:
 
@@ -197,9 +256,11 @@ Demonstrate:
 
 Open an individual ticket to demonstrate the ticket detail view.
 
+The current prototype stores ticket information using PostgreSQL persistence.
+
 ⸻
 
-9. Audit Demonstration
+10. Audit Demonstration
 
 Open:
 
@@ -212,16 +273,18 @@ Demonstrate that an agent run contains structured information including:
 * Request
 * Understanding
 * Retrieved knowledge
-* IT state
+* Pre-action IT state
 * Plan
 * Policy result
 * Tool result
 * Verification
 * Trace
 
+The audit trail is persisted through the PostgreSQL persistence layer.
+
 ⸻
 
-10. Policy Demonstration
+11. Policy Demonstration
 
 Open:
 
@@ -231,11 +294,13 @@ Explain that the policy engine acts as a safety boundary between reasoning and e
 
 Important statement:
 
-The language model does not directly receive unrestricted authority to perform system actions. Planned actions must pass through policy evaluation and the controlled tool gateway.
+The language model does not directly receive unrestricted authority
+to perform system actions. Planned actions must pass through policy
+evaluation and the controlled tool gateway.
 
 ⸻
 
-11. Tool Demonstration
+12. Tool Demonstration
 
 Open:
 
@@ -255,7 +320,7 @@ Privileged actions are subject to authorization and policy controls.
 
 ⸻
 
-12. IT World Demonstration
+13. IT World Demonstration
 
 Open:
 
@@ -263,9 +328,19 @@ http://localhost:3000/it-world
 
 Use this page to explain the observed IT environment and state used by the agent during decision making.
 
+Explain the distinction between:
+
+Pre-action state
+
+and:
+
+Post-action state
+
+The pre-action state is used for planning, while the post-action state is used for verification.
+
 ⸻
 
-13. Evaluation Demonstration
+14. Evaluation Demonstration
 
 Open:
 
@@ -285,9 +360,18 @@ Safety result:
 0.0% false-action rate
 100% safety pass rate
 
+The integrated local prototype also verified:
+
+* PostgreSQL persistence
+* BGE-small-en-v1.5 semantic retrieval
+* ChromaDB vector storage
+* Qwen2.5-3B-Instruct planning through Ollama
+* Controlled tool execution
+* Post-action verification
+
 ⸻
 
-14. Recommended Demo Order
+15. Recommended Demo Order
 
 Use the following order during the final presentation:
 
@@ -297,22 +381,25 @@ Use the following order during the final presentation:
 4. Agent page
 5. Normal VPN request
 6. Show seven stages
-7. Show successful controlled execution
-8. Show verification
-9. Show resolved ticket
-10. Run privileged access request
-11. Show policy blocked
-12. Show no tool execution
-13. Show escalated ticket
-14. Open audit page
-15. Open policy page
-16. Open evaluation page
-17. Show final evaluation results
-18. Explain limitations and future scope
+7. Show semantic knowledge retrieval
+8. Show Qwen/Ollama reasoning
+9. Show successful controlled execution
+10. Show post-action verification
+11. Show resolved ticket
+12. Run privileged access request
+13. Show policy blocked
+14. Show no tool execution
+15. Show escalated ticket
+16. Open audit page
+17. Open policy page
+18. Open IT-world page
+19. Open evaluation page
+20. Show final evaluation results
+21. Explain limitations and future scope
 
 ⸻
 
-15. Important Safety Demonstration Point
+16. Important Safety Demonstration Point
 
 When demonstrating the privileged request, clearly state:
 
@@ -327,7 +414,7 @@ Ticket → Escalated
 
 ⸻
 
-16. Important Architecture Point
+17. Important Architecture Point
 
 The seven-stage architecture is:
 
@@ -345,22 +432,52 @@ The seven-stage architecture is:
       ↓
 07 Verify
 
+The implementation uses:
+
+Natural-language request
+        ↓
+Intent / Entity Understanding
+        ↓
+BGE-small-en-v1.5 + ChromaDB Retrieval
+        ↓
+IT World Observation
+        ↓
+Qwen2.5-3B-Instruct + Ollama Reasoning
+        ↓
+Intent-specific Plan Validation
+        ↓
+Policy Evaluation
+        ↓
+Controlled Tool Gateway
+        ↓
+Post-action State
+        ↓
+Verification
+        ↓
+Ticket Resolution / Escalation
+
 This separation provides traceability from the original request to the final outcome.
 
 ⸻
 
-17. Final Demo Claims
+18. Final Demo Claims
 
 The project can demonstrate:
 
 * Autonomous IT request understanding
-* Knowledge retrieval
+* Semantic knowledge retrieval
+* BGE-small-en-v1.5 embeddings
+* ChromaDB vector retrieval
 * IT-state observation
+* Local Qwen2.5-3B-Instruct reasoning
+* Ollama-based local LLM execution
 * Action planning
+* Intent-specific plan validation
 * Policy-controlled execution
+* Controlled IT tools
 * Post-action verification
 * Ticket lifecycle management
-* Persistence
+* PostgreSQL persistence
 * Auditability
 * Safety escalation
 * Privileged-action blocking
@@ -371,19 +488,55 @@ The system should be presented as an academic prototype rather than a fully depl
 
 ⸻
 
-18. Demo Troubleshooting
+19. Demo Troubleshooting
 
-If the backend is not running:
+If PostgreSQL is not running
+
+Run:
+
+brew services start postgresql@17
+
+The current verified local database is:
+
+phoenix_helpdesk
+
+⸻
+
+If Ollama is not running
+
+Check:
+
+ollama list
+
+Expected model:
+
+qwen2.5:3b
+
+If Ollama is not running, start the local Ollama application/service and verify the model again.
+
+⸻
+
+If the backend is not running
+
+Run:
 
 cd /Users/vishnu/Documents/AUTONOMOUS-IT-HELPDESK
-python -m uvicorn backend.app.main:app --reload --port 8000
+backend/.venv/bin/uvicorn backend.app.main:app --reload --port 8000
 
-If the frontend is not running:
+⸻
+
+If the frontend is not running
+
+Run:
 
 cd /Users/vishnu/Documents/AUTONOMOUS-IT-HELPDESK/frontend
 npm run dev
 
-If the backend health endpoint fails:
+⸻
+
+If the backend health endpoint fails
+
+Run:
 
 curl -s http://127.0.0.1:8000/health
 
@@ -391,10 +544,27 @@ Expected:
 
 HTTP 200
 
+Expected response:
+
+{
+  "status": "healthy",
+  "service": "autonomous-it-helpdesk"
+}
+
 ⸻
 
-19. Final Demonstration Message
+If semantic retrieval fails
 
-PHOENIX IT HELPDESK demonstrates an autonomous, policy-controlled IT support workflow in which requests are understood, grounded with knowledge, evaluated against the observed IT state, reasoned into an action plan, checked by policy, executed through controlled tools when permitted, and verified after execution.
+The retrieval layer has deterministic keyword retrieval available as a fallback.
+
+The system should still remain capable of handling supported workflows when semantic retrieval components are unavailable.
+
+⸻
+
+20. Final Demonstration Message
+
+PHOENIX IT HELPDESK demonstrates an autonomous, policy-controlled IT support workflow in which requests are understood, grounded with semantic knowledge retrieval, evaluated against the observed IT state, reasoned into an action plan using a local LLM, checked by policy, executed through controlled tools when permitted, and verified after execution.
+
+The current prototype uses Qwen2.5-3B-Instruct through Ollama for local LLM reasoning, BGE-small-en-v1.5 with ChromaDB for semantic knowledge retrieval, and PostgreSQL for persistent tickets and audit records.
 
 For safety-sensitive requests, the system prevents unauthorized execution and escalates the request instead.

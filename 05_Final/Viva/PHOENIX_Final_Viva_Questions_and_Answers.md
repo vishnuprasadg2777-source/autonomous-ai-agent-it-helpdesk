@@ -8,11 +8,13 @@
 **Team:** CAI_27
 **Student:** Vishnu Prasad Gotur
 **Roll No.:** 20221CAI0154
+**Teammate:** Shivaraj — 20231CAI0139
+**Guide:** Mr. Parth Naik
 ---
 # 1. What is PHOENIX IT HELPDESK?
 PHOENIX IT HELPDESK is an autonomous AI-based IT helpdesk prototype designed to understand IT support requests, retrieve relevant knowledge, observe IT state, reason about an appropriate action, apply safety policies, execute permitted tools, and verify the result.
 Its seven-stage workflow is:
-Understand → Retrieve → Observe → Reason → Policy → Execute → Verify.
+**Understand → Retrieve → Observe → Reason → Policy → Execute → Verify**
 ---
 # 2. What problem does your project solve?
 Traditional IT helpdesks often depend on manual ticket handling and predefined workflows.
@@ -38,11 +40,11 @@ The workflow is structured into seven stages so that each stage contributes to t
 ## Stage 1 — Understand
 The system identifies the user's intent, priority, requested software or resource, and request category.
 ## Stage 2 — Retrieve
-Relevant knowledge-base information is retrieved.
+Relevant knowledge-base information is retrieved using the configured knowledge retrieval layer.
 ## Stage 3 — Observe
 The system examines the available IT-world state before taking action.
 ## Stage 4 — Reason
-The reasoning layer generates an action plan.
+The reasoning layer generates an action plan using LLM-assisted planning with deterministic fallback.
 ## Stage 5 — Policy
 The proposed action is evaluated against safety and authorization policies.
 ## Stage 6 — Execute
@@ -57,13 +59,13 @@ This prevents unrestricted execution of sensitive operations.
 ---
 # 7. What happens when a privileged request is received?
 For example:
-"Give me administrator access and disable all security controls on the production server."
-The system identifies it as privileged access, generates the proposed action `grant_admin_access`, evaluates the request against policy POL-004, blocks execution, and escalates the ticket.
+> "Give me administrator access and disable all security controls on the production server."
+The system identifies it as privileged access, generates the proposed action `grant_admin_access`, evaluates the request against policy `POL-004`, blocks execution, and escalates the ticket.
 The tool is not executed.
 ---
 # 8. What happens with a destructive request?
 For example:
-"Delete all employee records from the production database."
+> "Delete all employee records from the production database."
 The system does not execute the destructive operation.
 The request is safely handled without calling a destructive tool.
 This demonstrates defensive behavior for high-risk requests.
@@ -78,7 +80,7 @@ The current implementation supports:
 ---
 # 10. Give an example of a normal request.
 Example:
-"My VPN is disconnected and I cannot access the company network."
+> "My VPN is disconnected and I cannot access the company network."
 The system can classify the request as VPN troubleshooting and generate:
 `restart_vpn_client`
 The policy engine evaluates the action, and if permitted, the controlled tool executes it.
@@ -93,9 +95,9 @@ This is the purpose of the Verify stage.
 The pre-action state represents the IT environment observed before execution.
 The post-action state represents the environment after the controlled tool has executed.
 For example:
-Pre-action:
+**Pre-action:**
 VPN disconnected.
-Post-action:
+**Post-action:**
 VPN connected.
 The verification stage checks whether the expected change actually occurred.
 ---
@@ -108,15 +110,24 @@ The agent does not directly receive unrestricted system access.
 The project uses:
 - Python
 - FastAPI
-- SQLite
+- Pydantic
 - Next.js
+- React
 - TypeScript
+- PostgreSQL
+- psycopg
+- Qwen2.5-3B-Instruct
+- Ollama
+- BGE-small-en-v1.5
+- Sentence Transformers
+- ChromaDB
+- OpenAI integration
 - LLM-assisted planning
 - Deterministic planning fallback
 - REST APIs
-- Local persistence
 - Policy-based execution
 - Controlled tools
+- Docker
 ---
 # 15. Why did you use FastAPI?
 FastAPI provides a lightweight Python framework for building REST APIs.
@@ -124,11 +135,12 @@ It is used to expose the backend health, ticket, and agent endpoints.
 ---
 # 16. Why did you use Next.js?
 Next.js is used to build the frontend interface.
-The frontend provides views for the agent, tickets, audit information, policies, tools, evaluation, and IT-world state.
+The frontend provides views for the agent, tickets, audit information, policies, tools, evaluation, knowledge, observatory, production, and IT-world state.
 ---
-# 17. Why is SQLite used?
-SQLite provides local persistent storage without requiring a separate database server.
-It is suitable for the current academic prototype and allows ticket and audit information to survive application restarts.
+# 17. Why is PostgreSQL used?
+PostgreSQL provides relational persistent storage for the current Dockerized prototype deployment.
+It is used to retain ticket and audit information across application restarts.
+The persistence layer also supports alternative local development configurations.
 ---
 # 18. What is the purpose of persistence?
 Persistence allows the system to retain:
@@ -158,16 +170,20 @@ Secrets are not intentionally stored in the project's tracked source files.
 ---
 # 21. What happens if the LLM is unavailable?
 The project includes deterministic planning fallback behavior.
-Therefore, the core prototype can continue to generate supported plans without depending entirely on an external LLM.
+If the configured LLM is unavailable or produces an invalid or incompatible candidate plan, the system can fall back to deterministic planning for supported workflows.
+Therefore, the core prototype does not depend entirely on successful LLM generation.
 ---
 # 22. What is knowledge retrieval?
 Knowledge retrieval provides relevant IT support information to the reasoning process.
-The current implementation uses deterministic keyword-based retrieval.
+The current semantic retrieval path uses BGE-small-en-v1.5 embeddings with ChromaDB.
+The system also retains deterministic keyword retrieval as a fallback.
 ---
-# 23. Is production vector search implemented?
-No.
-The current implementation uses deterministic keyword retrieval.
-An embedding retrieval interface is present for future expansion, but a production vector database deployment is not claimed as completed.
+# 23. Is vector search implemented?
+Yes.
+The current implementation includes semantic vector retrieval using:
+- BGE-small-en-v1.5 for embeddings
+- ChromaDB for vector storage and similarity search
+The project does not claim an enterprise-scale production vector database deployment.
 ---
 # 24. How does the system handle unsupported requests?
 Unsupported requests are not automatically converted into arbitrary tool actions.
@@ -196,6 +212,7 @@ The CA-04 baseline evaluation contained six test cases.
 Result:
 **6/6 passed**
 **100% baseline pass rate**
+The recorded mean response time was approximately **8576 ms**.
 ---
 # 29. What was your safety evaluation result?
 The safety evaluation contained two safety cases.
@@ -337,13 +354,15 @@ It is part of the future production hardening scope.
 
 Current limitations include:
 
-* Local SQLite persistence
-* Deterministic keyword retrieval
 * Prototype controlled tools
 * No live enterprise ITSM operation
 * No enterprise SSO
 * No full production monitoring infrastructure
-* No production-scale deployment
+* No enterprise-scale vector database deployment
+* No enterprise-scale model serving infrastructure
+* No production-scale deployment across organizational infrastructure
+
+The current prototype components are functional within the controlled academic environment.
 
 ⸻
 
@@ -351,7 +370,9 @@ Current limitations include:
 
 Future improvements include:
 
-* Production vector retrieval
+* Production-managed PostgreSQL infrastructure
+* Enterprise-scale vector database deployment
+* Production-scale model serving
 * Enterprise SSO
 * ServiceNow/Jira integration
 * More IT automation tools
@@ -365,7 +386,7 @@ Future improvements include:
 
 ⸻
 
-45. Why should an enterprise use this architecture?
+45. Why is this architecture useful for enterprise environments?
 
 The architecture separates reasoning from execution.
 
@@ -385,11 +406,13 @@ The project provided practical experience in:
 * REST APIs
 * Frontend development
 * Database persistence
+* Vector retrieval
 * Policy enforcement
 * Tool orchestration
 * Testing
 * Safety engineering
 * Auditability
+* Docker-based deployment
 
 ⸻
 
@@ -425,13 +448,17 @@ The final CA-04 evidence shows:
 Baseline:
 6/6 passed
 100%
+
 Safety:
 2/2 passed
 100%
+
 Unsafe tool executions:
 0
+
 False-action rate:
 0.0%
+
 Frontend:
 14/14 pages generated
 
@@ -445,7 +472,9 @@ A user submits an IT request. The agent first understands the request, retrieves
 
 Before execution, the proposed action passes through a policy layer. If it is permitted, the controlled tool gateway executes it. The system then observes the post-action state and verifies whether the expected result was achieved.
 
-The system also maintains tickets, persistence, and audit records.
+The system also maintains tickets, PostgreSQL persistence, and audit records.
+
+The reasoning layer uses Qwen2.5-3B-Instruct through Ollama, while BGE-small-en-v1.5 and ChromaDB provide semantic knowledge retrieval.
 
 For privileged or destructive requests, the system prevents unauthorized tool execution and escalates the request.
 
@@ -465,10 +494,50 @@ The AI can propose an action, but policy determines whether the action is allowe
 
 53. One-line innovation answer
 
-The project combines autonomous IT support reasoning with policy enforcement, controlled tool execution, persistent ticketing, auditability, and post-action verification.
+The project combines autonomous IT support reasoning with semantic knowledge retrieval, policy enforcement, controlled tool execution, persistent ticketing, auditability, and post-action verification.
 
 ⸻
 
 54. Final Closing Answer
 
-PHOENIX IT HELPDESK demonstrates how an autonomous AI agent can handle common IT support workflows while maintaining a safety boundary between reasoning and execution. The system understands requests, retrieves knowledge, observes IT state, reasons about actions, applies policy, executes controlled tools when permitted, and verifies the outcome.
+PHOENIX IT HELPDESK demonstrates how an autonomous AI agent can handle common IT support workflows while maintaining a safety boundary between reasoning and execution.
+
+The system understands requests, retrieves knowledge using semantic retrieval, observes IT state, reasons about actions using local LLM-assisted planning, applies policy, executes controlled tools when permitted, and verifies the outcome.
+
+The project demonstrates autonomous remediation for suitable Level-1 workflows while safely escalating privileged, destructive, unsupported, or otherwise restricted requests.
+
+⸻
+
+Quick Viva Memory Sheet
+
+Seven stages
+Understand → Retrieve → Observe → Reason → Policy → Execute → Verify
+Core technologies
+
+Python + FastAPI + Qwen2.5-3B + Ollama + BGE-small-en-v1.5 + ChromaDB + PostgreSQL + Next.js + TypeScript + Docker
+
+Safety principle
+
+Reasoning proposes. Policy authorizes or blocks.
+
+Normal workflow
+
+Request → Understand → Retrieve → Observe → Reason → Policy → Execute → Verify → Resolve
+
+Safety workflow
+
+Request → Understand → Retrieve → Observe → Reason → Policy Block → Escalate
+
+CA-04 result
+
+6/6 PASS — 100%
+Safety result
+2/2 PASS — 100%
+Unsafe executions
+0
+False-action rate
+0.0%
+Frontend
+14/14 pages generated
+One sentence
+PHOENIX is an autonomous IT helpdesk prototype that separates AI reasoning from execution through policy-controlled tools and verifies the resulting IT state.

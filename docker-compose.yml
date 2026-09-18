@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: phoenix-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: phoenix
+      POSTGRES_PASSWORD: phoenix_dev_password
+      POSTGRES_DB: phoenix_helpdesk
+    ports:
+      - "5433:5432"
+    volumes:
+      - phoenix_postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: phoenix-backend
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      PHOENIX_PERSISTENCE: postgres
+      PHOENIX_DATABASE_URL: postgresql://phoenix:phoenix_dev_password@postgres:5432/phoenix_helpdesk
+      PHOENIX_LLM_PROVIDER: ollama
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: qwen2.5:3b
+      PHOENIX_LLM_TIMEOUT_SECONDS: "60"
+      PHOENIX_EMBEDDING_MODEL: BAAI/bge-small-en-v1.5
+      PHOENIX_CHROMA_PATH: /app/.data/chroma
+      PHOENIX_CHROMA_COLLECTION: phoenix_knowledge
+    ports:
+      - "8000:8000"
+    volumes:
+      - phoenix_chroma_data:/app/.data/chroma
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: phoenix-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3001:3000"
+
+volumes:
+  phoenix_postgres_data:
+  phoenix_chroma_data:

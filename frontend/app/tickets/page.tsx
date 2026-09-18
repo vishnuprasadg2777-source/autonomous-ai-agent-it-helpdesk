@@ -20,7 +20,16 @@ import { useEffect, useMemo, useState } from "react";
 
 import { getTickets, type Ticket } from "@/lib/api/client";
 
-const statusConfig = {
+const statusConfig: Record<
+  string,
+  {
+    label: string;
+    description: string;
+    className: string;
+    dotClass: string;
+    icon: typeof AlertCircle;
+  }
+> = {
   open: {
     label: "Open",
     description: "Awaiting agent action",
@@ -49,6 +58,21 @@ const statusConfig = {
     dotClass: "bg-emerald-400",
     icon: CheckCircle2,
   },
+  escalated: {
+    label: "Escalated",
+    description: "Human intervention required",
+    className: "bg-red-400/[0.07] text-red-300/80",
+    dotClass: "bg-red-400",
+    icon: ShieldAlert,
+  },
+};
+
+const fallbackStatusConfig = {
+  label: "Unknown",
+  description: "Status requires review",
+  className: "bg-white/[0.07] text-white/50",
+  dotClass: "bg-white/40",
+  icon: AlertCircle,
 };
 
 const filterOptions: Array<{
@@ -424,8 +448,11 @@ export default function TicketsPage() {
 
               <div className="divide-y divide-white/[0.045]">
                 {filteredTickets.map((ticket) => {
-                  const config = statusConfig[ticket.status];
+                  const config =
+                    statusConfig[ticket.status] ?? fallbackStatusConfig;
+
                   const StatusIcon = config.icon;
+
                   const isAI =
                     ticket.assignee.toLowerCase().includes("ai") ||
                     ticket.assignee.toLowerCase().includes("agent");

@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass, field
-from typing import Protocol
+from pathlib import Path
+from typing import Any, Protocol
 
 
 @dataclass
@@ -88,22 +89,29 @@ KNOWLEDGE_BASE = [
 
 
 class RetrievalBackendUnavailable(RuntimeError):
-    """Raised by an optional retrieval backend when it cannot be used."""
+    """Raised when the optional semantic retrieval backend is unavailable."""
 
 
 class KnowledgeRetriever(Protocol):
     def retrieve(
-        self, query: str, category: str | None = None, limit: int = 3
-    ) -> list[KnowledgeSource]: ...
+        self,
+        query: str,
+        category: str | None = None,
+        limit: int = 3,
+    ) -> list[KnowledgeSource]:
+        ...
 
 
 class DeterministicKeywordRetriever:
-    """Default local retriever. It does not require embeddings or a vector DB."""
+    """Dependency-light keyword retriever used as the safety fallback."""
 
     name = "deterministic-keyword"
 
     def retrieve(
-        self, query: str, category: str | None = None, limit: int = 3
+        self,
+        query: str,
+        category: str | None = None,
+        limit: int = 3,
     ) -> list[KnowledgeSource]:
 
         text = query.strip().lower()
@@ -112,33 +120,33 @@ class DeterministicKeywordRetriever:
             return []
 
         keyword_groups = {
-        "Network": [
-            "vpn",
-            "network",
-            "connection",
-            "connect",
-            "remote access",
-            "internet",
-        ],
-        "Identity": [
-            "password",
-            "login",
-            "authentication",
-            "account",
-        ],
-        "Software": [
-            "software",
-            "application",
-            "install",
-            "installation",
-        ],
-        "Access": [
-            "access",
-            "permission",
-            "privilege",
-            "resource",
-        ],
-    }
+            "Network": [
+                "vpn",
+                "network",
+                "connection",
+                "connect",
+                "remote access",
+                "internet",
+            ],
+            "Identity": [
+                "password",
+                "login",
+                "authentication",
+                "account",
+            ],
+            "Software": [
+                "software",
+                "application",
+                "install",
+                "installation",
+            ],
+            "Access": [
+                "access",
+                "permission",
+                "privilege",
+                "resource",
+            ],
+        }
 
         scores: list[tuple[KnowledgeSource, float]] = []
 
@@ -167,7 +175,6 @@ class DeterministicKeywordRetriever:
                     score += 0.02
 
             score = min(score, 0.99)
-
             scores.append((source, score))
 
         scores.sort(
@@ -196,23 +203,355 @@ class DeterministicKeywordRetriever:
         return results
 
 
-class EmbeddingVectorRetriever:
-    """Optional extension point; no model or vector database is bundled."""
+class ChromaBGERetriever:
+    """
+    Real semantic retrieval using:
 
-    name = "embedding-vector"
+        BAAI/bge-small-en-v1.5
+                  ↓
+             embeddings
+                  ↓
+               ChromaDB
+                  ↓
+          cosine similarity
+
+    The Chroma database is persisted locally under backend/.data/chroma.
+    """
+
+    name = "bge-small-en-v1.5 + chromadb"
+
+    def __init__(self) -> None:
+        try:
+            import chromadb
+            from sentence_transformers import SentenceTransformer
+        except Exception as exc:
+            raise RetrievalBackendUnavailable(
+                f"Semantic retrieval dependencies are unavailable: {exc}"
+            ) from exc
+
+        self._chromadb = chromadb
+
+        self._embedding_model_name = os.getenv(
+            "PHOENIX_EMBEDDING_MODEL",
+            "BAAI/bge-small-en-v1.5",
+        )
+
+        self._model = SentenceTransformer(
+            self._embedding_model_name
+        )
+
+        project_root = Path(__file__).resolve().parents[3]
+
+        default_path = project_root / ".data" / "chroma"
+
+        chroma_path = Path(
+            os.getenv(
+                "PHOENIX_CHROMA_PATH",
+                str(default_path),
+            )
+        )
+
+        chroma_path.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        self._client = chromadb.PersistentClient(
+            path=str(chroma_path)
+        )
+
+        self._collection = self._client.get_or_create_collection(
+            name=os.getenv(
+                "PHOENIX_CHROMA_COLLECTION",
+                "phoenix_knowledge",
+            ),
+            metadata={
+                "description": "PHOENIX IT Helpdesk knowledge base",
+                "embedding_model": self._embedding_model_name,
+                "distance_metric": "cosine",
+            },
+        )
+
+        self._ensure_seeded()
+
+    def _ensure_seeded(self) -> None:
+        """Seed ChromaDB from the canonical PHOENIX knowledge base."""
+
+        if self._collection.count() >= len(KNOWLEDGE_BASE):
+            return
+
+        documents = [
+            source.content
+            for source in KNOWLEDGE_BASE
+        ]
+
+        embeddings = self._model.encode(
+            documents,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        ).tolist()
+
+        ids = [
+            source.id
+            for source in KNOWLEDGE_BASE
+        ]
+
+        metadatas = [
+            {
+                "title": source.title,
+                "category": source.category,
+                "source": source.source,
+                "base_relevance": str(source.relevance),
+            }
+            for source in KNOWLEDGE_BASE
+        ]
+
+        self._collection.upsert(
+            ids=ids,
+            documents=documents,
+            embeddings=embeddings,
+            metadatas=metadatas,
+        )
+
+    @staticmethod
+    def _category_matches(
+        source_category: str,
+        requested_category: str,
+    ) -> bool:
+        """
+        Match broad PHOENIX categories against hierarchical categories.
+
+        Examples:
+
+            Network
+                matches Network / VPN
+                matches Network / Client
+
+            Access
+                matches Access
+
+            Identity
+                matches Identity
+        """
+
+        requested = requested_category.strip().lower()
+        actual = source_category.strip().lower()
+
+        if not requested:
+            return True
+
+        if actual == requested:
+            return True
+
+        return actual.startswith(
+            f"{requested} /"
+        )
 
     def retrieve(
-        self, query: str, category: str | None = None, limit: int = 3
+        self,
+        query: str,
+        category: str | None = None,
+        limit: int = 3,
     ) -> list[KnowledgeSource]:
-        raise RetrievalBackendUnavailable(
-            "Embedding/vector retrieval requires a configured model and vector store."
+
+        text = query.strip()
+
+        if not text:
+            return []
+
+        safe_limit = max(
+            1,
+            min(
+                limit,
+                len(KNOWLEDGE_BASE),
+            ),
         )
+
+        query_embedding = self._model.encode(
+            [text],
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        ).tolist()
+
+        # Always perform semantic retrieval first.
+        #
+        # Category filtering is intentionally performed locally after
+        # retrieval because PHOENIX uses hierarchical categories such as
+        # "Network / VPN" and "Network / Client".
+        results = self._collection.query(
+            query_embeddings=query_embedding,
+            n_results=len(KNOWLEDGE_BASE),
+            include=[
+                "documents",
+                "metadatas",
+                "distances",
+            ],
+        )
+
+        documents = results.get(
+            "documents",
+            [[]],
+        )[0]
+
+        metadatas = results.get(
+            "metadatas",
+            [[]],
+        )[0]
+
+        distances = results.get(
+            "distances",
+            [[]],
+        )[0]
+
+        returned_ids = results.get(
+            "ids",
+            [[]],
+        )[0]
+
+        if not documents:
+            return []
+
+        source_by_id = {
+            source.id: source
+            for source in KNOWLEDGE_BASE
+        }
+
+        retrieved: list[KnowledgeSource] = []
+
+        for index, document in enumerate(documents):
+            metadata = (
+                metadatas[index]
+                if index < len(metadatas)
+                else {}
+            )
+
+            source_id = (
+                returned_ids[index]
+                if index < len(returned_ids)
+                else ""
+            )
+
+            canonical = source_by_id.get(
+                source_id
+            )
+
+            title = str(
+                metadata.get(
+                    "title",
+                    canonical.title
+                    if canonical
+                    else source_id,
+                )
+            )
+
+            source_category = str(
+                metadata.get(
+                    "category",
+                    canonical.category
+                    if canonical
+                    else "General IT",
+                )
+            )
+
+            source_name = str(
+                metadata.get(
+                    "source",
+                    canonical.source
+                    if canonical
+                    else "PHOENIX local knowledge base",
+                )
+            )
+
+            if category and not self._category_matches(
+                source_category,
+                category,
+            ):
+                continue
+
+            distance = (
+                float(distances[index])
+                if index < len(distances)
+                else 1.0
+            )
+
+            # Chroma cosine distance is lower for closer matches.
+            # Convert it to the 0-1 relevance representation used
+            # throughout PHOENIX.
+            similarity = max(
+                0.0,
+                min(
+                    1.0,
+                    1.0 - distance,
+                ),
+            )
+
+            relevance = round(
+                min(
+                    0.99,
+                    similarity,
+                ),
+                2,
+            )
+
+            retrieved.append(
+                KnowledgeSource(
+                    id=source_id,
+                    title=title,
+                    category=source_category,
+                    content=document,
+                    relevance=relevance,
+                    source=source_name,
+                    metadata={
+                        "retrieval_backend": self.name,
+                        "embedding_model": self._embedding_model_name,
+                        "vector_database": "ChromaDB",
+                        "distance": f"{distance:.6f}",
+                    },
+                )
+            )
+
+            if len(retrieved) >= safe_limit:
+                break
+
+        return retrieved
 
 
 def _configured_retriever() -> KnowledgeRetriever:
-    if os.getenv("PHOENIX_RETRIEVAL_BACKEND", "keyword").lower() == "embedding":
-        return EmbeddingVectorRetriever()
-    return DeterministicKeywordRetriever()
+    """
+    Select the configured retrieval backend.
+
+    Default:
+        Real BGE + ChromaDB semantic retrieval.
+
+    Optional:
+        PHOENIX_RETRIEVAL_BACKEND=keyword
+        forces the deterministic fallback.
+    """
+
+    backend = os.getenv(
+        "PHOENIX_RETRIEVAL_BACKEND",
+        "embedding",
+    ).strip().lower()
+
+    if backend in {
+        "keyword",
+        "deterministic",
+        "deterministic-keyword",
+    }:
+        return DeterministicKeywordRetriever()
+
+    if backend in {
+        "embedding",
+        "vector",
+        "chromadb",
+        "bge",
+        "bge-chromadb",
+    }:
+        return ChromaBGERetriever()
+
+    raise RetrievalBackendUnavailable(
+        f"Unknown retrieval backend: {backend}"
+    )
 
 
 def retrieve_knowledge(
@@ -220,19 +559,50 @@ def retrieve_knowledge(
     category: str | None = None,
     limit: int = 3,
 ) -> list[KnowledgeSource]:
-    """Retrieve knowledge with a safe deterministic fallback.
+    """
+    Retrieve PHOENIX knowledge.
 
-    ``PHOENIX_RETRIEVAL_BACKEND=embedding`` reserves an optional production
-    integration boundary. Until a model and vector store are configured, the
-    agent deliberately uses the deterministic local retriever instead.
+    The default path is real semantic retrieval using
+    BAAI/bge-small-en-v1.5 and ChromaDB.
+
+    If the semantic backend is unavailable, PHOENIX safely falls back
+    to the deterministic keyword retriever so the autonomous agent
+    remains operational.
     """
 
     try:
-        return _configured_retriever().retrieve(query, category, limit)
-    except RetrievalBackendUnavailable:
-        fallback_results = DeterministicKeywordRetriever().retrieve(
-            query, category, limit
+        return _configured_retriever().retrieve(
+            query,
+            category,
+            limit,
         )
+
+    except RetrievalBackendUnavailable as exc:
+        fallback_results = (
+            DeterministicKeywordRetriever().retrieve(
+                query,
+                category,
+                limit,
+            )
+        )
+
         for source in fallback_results:
-            source.metadata["fallback_reason"] = "optional_backend_unavailable"
+            source.metadata["fallback_reason"] = str(exc)
+
+        return fallback_results
+
+    except Exception as exc:
+        # Fail safe: retrieval failure must never prevent the helpdesk
+        # agent from operating with its deterministic knowledge layer.
+        fallback_results = (
+            DeterministicKeywordRetriever().retrieve(
+                query,
+                category,
+                limit,
+            )
+        )
+
+        for source in fallback_results:
+            source.metadata["fallback_reason"] = str(exc)
+
         return fallback_results

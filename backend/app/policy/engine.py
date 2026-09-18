@@ -91,6 +91,32 @@ POLICY_RULES = {
 
 
 # =========================================================
+# APPROVED SOFTWARE ALLOWLIST
+# =========================================================
+#
+# Software installation is NOT permitted merely because the
+# endpoint is operational.
+#
+# The requested software must also be explicitly present in
+# this controlled allowlist.
+#
+# "approved software" is retained as a controlled generic
+# test value used by the project evaluation workflow.
+# =========================================================
+
+APPROVED_SOFTWARE = {
+    "approved software",
+    "visual studio code",
+    "vs code",
+    "google chrome",
+    "mozilla firefox",
+    "7-zip",
+    "vlc media player",
+    "microsoft teams",
+}
+
+
+# =========================================================
 # HELPERS
 # =========================================================
 
@@ -122,6 +148,12 @@ def _state_is_valid(
     return it_state.get(key) == expected
 
 
+def _normalize_software_name(value: str | None) -> str:
+    """Normalize a requested software name for allowlist comparison."""
+
+    return " ".join((value or "").strip().lower().split())
+
+
 # =========================================================
 # POLICY ENGINE
 # =========================================================
@@ -144,6 +176,10 @@ def evaluate_policy(
 
     The policy engine is fail-closed:
     an action without an explicit rule is blocked.
+
+    Software installation has an additional allowlist check:
+    only explicitly approved software may be installed
+    autonomously.
     """
 
     # Normalize the action so accidental surrounding whitespace
@@ -215,11 +251,36 @@ def evaluate_policy(
     # PASSWORD RESET SAFETY CHECK
     # =====================================================
 
+    if action == "reset_password":
+        authentication_state = it_state.get("authentication")
+
+        # A password-reset request is specifically used when the
+        # authentication state requires attention. A valid state
+        # is also acceptable for the controlled reset workflow.
+        #
+        # Unexpected or unknown authentication states remain
+        # blocked by default.
+        if authentication_state not in {
+            "requires_attention",
+            "valid",
+        }:
+            return _blocked(
+                action=action,
+                risk=rule["risk"],
+                reason=(
+                    "Password reset is blocked because the observed "
+                    "authentication state does not satisfy the "
+                    "approved identity-management workflow."
+                ),
+                policy_id=rule["policy_id"],
+            )
+
     # =====================================================
     # SOFTWARE INSTALLATION SAFETY CHECK
     # =====================================================
 
     if action == "install_software":
+        # First verify that the endpoint itself is eligible.
         if not _state_is_valid(
             it_state,
             "endpoint",
@@ -233,6 +294,35 @@ def evaluate_policy(
                     "observed endpoint is not operational."
                 ),
                 policy_id=rule["policy_id"],
+            )
+
+        # Then independently verify the requested software.
+        requested_software = _normalize_software_name(
+            it_state.get("requested_software")
+        )
+
+        if not requested_software:
+            return _blocked(
+                action=action,
+                risk=rule["risk"],
+                reason=(
+                    "Software installation is blocked because the "
+                    "requested software could not be identified."
+                ),
+                policy_id=rule["policy_id"],
+            )
+
+        if requested_software not in APPROVED_SOFTWARE:
+            return _blocked(
+                action=action,
+                risk=rule["risk"],
+                reason=(
+                    "Software installation is blocked because the "
+                    f"requested software '{it_state.get('requested_software')}' "
+                    "is not present in the approved software allowlist. "
+                    "Human approval is required before installation."
+                ),
+                policy_id="POL-003-ALLOWLIST",
             )
 
     # =====================================================

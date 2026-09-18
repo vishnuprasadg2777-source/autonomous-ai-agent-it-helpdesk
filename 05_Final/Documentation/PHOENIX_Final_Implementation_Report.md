@@ -189,7 +189,11 @@ Example retrieved sources include:
 * KB-008 – Remote Access Service Requirements
 * KB-055 – Access Request Procedure
 
-The current prototype uses deterministic keyword-based retrieval.
+The current prototype uses semantic vector retrieval implemented with BGE-small-en-v1.5 embeddings and ChromaDB.
+
+The retrieval pipeline embeds the helpdesk knowledge base using the local BGE-small-en-v1.5 model and stores the vectors in a persistent ChromaDB collection. User requests are embedded and matched against the knowledge base to retrieve semantically relevant procedures.
+
+Deterministic keyword retrieval remains available as a fallback if the semantic retrieval components are unavailable.
 
 ⸻
 
@@ -215,7 +219,9 @@ The prototype explicitly distinguishes pre-action state from post-action state.
 
 The reasoning layer generates a candidate plan.
 
-The implementation supports LLM-assisted planning with deterministic fallback.
+The implementation uses Qwen2.5-3B-Instruct through local Ollama for LLM-assisted candidate planning, with deterministic planning available as a fallback.
+
+The LLM planner is grounded using the detected intent, retrieved knowledge and observed IT state. Candidate plans are validated against intent-specific allowed actions before they can proceed to policy evaluation.
 
 Example:
 
@@ -223,7 +229,7 @@ Action: restart_vpn_client
 Target: VPN Client
 Risk: Low
 Authorization Required: true
-Confidence: 0.94
+Confidence: 0.85
 
 ⸻
 
@@ -305,9 +311,13 @@ Location:
 
 backend/app/agent/reasoning/llm_planner.py
 
-Provides LLM-assisted candidate planning with deterministic fallback.
+Provides LLM-assisted candidate planning using Qwen2.5-3B-Instruct through local Ollama.
 
-Supported configuration includes OpenAI and optional local Ollama planning.
+The planner uses structured context containing the detected intent, retrieved knowledge and observed IT state. The generated candidate plan is validated against a strict JSON schema and intent-specific allowed actions.
+
+If the local LLM is unavailable or produces an invalid or incompatible plan, the system falls back to deterministic planning.
+
+OpenAI integration remains supported as an optional configuration.
 
 ⸻
 
@@ -329,8 +339,11 @@ backend/app/knowledge/retrieval.py
 
 Provides knowledge retrieval for the helpdesk knowledge base.
 
-The current implementation uses deterministic keyword retrieval.
+The current implementation uses BGE-small-en-v1.5 semantic embeddings with ChromaDB as the vector database.
 
+The retrieval layer performs semantic similarity search and returns relevant knowledge with retrieval metadata, including the embedding model and vector database used.
+
+Deterministic keyword retrieval remains available as a fallback.
 ⸻
 
 9.6 IT World Model
@@ -379,7 +392,11 @@ Location:
 
 backend/app/persistence/repository.py
 
-Provides SQLite-backed persistence for tickets and audit events.
+Provides PostgreSQL-backed persistence for tickets and audit events.
+
+The current verified deployment uses PostgreSQL with the psycopg driver. The persistence layer creates and maintains ticket and audit-event tables and supports transactional ticket transitions and structured audit records.
+
+SQLite and in-memory repositories remain available as alternative development configurations.
 
 ⸻
 
@@ -474,12 +491,14 @@ This demonstrates the intended safety boundary between candidate reasoning and e
 
 13. Persistence and Audit Trail
 
-The prototype includes SQLite persistence for:
+The prototype includes PostgreSQL persistence for:
 
 * Tickets
 * Ticket status changes
 * Agent runs
 * Audit events
+
+SQLite and in-memory repositories remain available as alternative development configurations.
 
 Agent-run evidence includes:
 
@@ -493,11 +512,8 @@ Agent-run evidence includes:
 * Verification
 * Execution trace
 
-The runtime database is stored locally under:
-
-backend/.data/
-
-and is excluded from Git.
+The current verified Docker deployment uses PostgreSQL for runtime ticket and audit persistence.
+ChromaDB vector data is persisted through the Docker volume configured for the backend.
 
 ⸻
 
@@ -582,11 +598,16 @@ Backend
 * Pydantic
 * Uvicorn
 * HTTPX
+* Qwen2.5-3B-Instruct
+* Ollama
 * OpenAI integration
-* SQLite
+* BGE-small-en-v1.5
+* Sentence Transformers
+* ChromaDB
+* PostgreSQL
+* psycopg
 
 Frontend
-
 * Next.js
 * React
 * TypeScript
@@ -813,15 +834,14 @@ The project is an academic research prototype.
 
 The following should not be interpreted as production enterprise capabilities:
 
-1. SQLite is used for local persistence.
-2. Production PostgreSQL deployment is not implemented.
-3. The current retrieval implementation is deterministic keyword retrieval.
-4. A production vector/embedding retrieval implementation is not completed.
-5. ServiceNow/Jira live enterprise operations are not implemented.
-6. Enterprise SSO and identity integration are not implemented.
-7. Controlled tools operate within the prototype environment.
-8. Production infrastructure automation is not claimed.
-9. Production-grade deployment, monitoring, secrets management and enterprise security controls would require additional implementation.
+1. PostgreSQL is implemented and verified in the current local prototype deployment; a production-managed PostgreSQL infrastructure deployment is not claimed.
+2. Semantic vector retrieval is implemented using BGE-small-en-v1.5 and ChromaDB; a production enterprise-scale vector database deployment is not claimed.
+3. The Qwen2.5-3B-Instruct model is executed locally through Ollama; production-scale model serving and enterprise model infrastructure are not claimed.
+4. ServiceNow/Jira live enterprise operations are not implemented.
+5. Enterprise SSO and identity integration are not implemented.
+6. Controlled tools operate within the prototype environment.
+7. Production infrastructure automation is not claimed.
+8. Production-grade deployment, monitoring, secrets management and enterprise security controls would require additional implementation.
 
 ⸻
 
@@ -829,8 +849,10 @@ The following should not be interpreted as production enterprise capabilities:
 
 Potential future extensions include:
 
-* PostgreSQL persistence
-* Vector and embedding-based retrieval
+* Production-managed PostgreSQL infrastructure
+* Production-scale vector database deployment
+* Larger and more specialized embedding models
+* Production-scale Qwen or other LLM serving
 * ServiceNow integration
 * Jira integration
 * Enterprise SSO
@@ -838,12 +860,8 @@ Potential future extensions include:
 * Additional controlled workflows
 * Larger IT World Models
 * Advanced agent memory
-* Multi-agent coordination
-* Production monitoring
-* Security monitoring
-* Enterprise deployment
-* Larger-scale evaluation
-
+* Production infrastructure automation
+* Enterprise monitoring and observability
 ⸻
 
 27. Research Contribution

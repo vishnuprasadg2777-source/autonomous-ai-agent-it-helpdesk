@@ -57,36 +57,41 @@ def _clean_entity(value: str) -> str:
 
 def _extract_software(text: str) -> str | None:
     """
-    Extract software/application names from natural-language requests.
+    Extract the requested software/application name from a natural-language
+    installation request.
 
-    Examples:
-        install Microsoft Teams
-        please install Google Chrome
-        I need Zoom installed
-        download and install VS Code
-        can you install the SAP client on my laptop
+    The extraction deliberately removes common device/location suffixes so
+    that requests such as:
+
+        install Google Chrome on my company laptop
+        install VS Code on my laptop
+        download and install Microsoft Teams on my computer
+
+    produce the actual software name rather than the entire request phrase.
     """
 
-    patterns = [
-        # install/download + application name
-        r"\b(?:install|download\s+and\s+install|download)\s+"
-        r"(?:the\s+)?(.+?)"
-        r"(?=\s+(?:on|onto)\s+(?:my|the)\s+"
-        r"(?:computer|device|laptop|pc|machine)\b|[.,!?;]|$)",
+    normalized = _clean_entity(text)
 
-        # application/software called/named X
+    # ---------------------------------------------------------
+    # Explicit software/application called or named X
+    # ---------------------------------------------------------
+
+    explicit_patterns = [
         r"\b(?:software|application|program|app)\s+"
         r"(?:called|named)\s+(.+?)(?=[.,!?;]|$)",
+    ]
 
-        # I need/want X installed
-        r"\b(?:need|want|require)\s+"
-        r"(.+?)\s+(?:software|application|program|app)"
-        r"\s+(?:installed|installation)\b",
+    # ---------------------------------------------------------
+    # Installation requests.
+    #
+    # Capture the text immediately following install/download,
+    # then remove common trailing device/context phrases.
+    # ---------------------------------------------------------
 
-        # X installed on my computer
-        r"\b(?:need|want|require)\s+"
-        r"(.+?)\s+installed\s+(?:on|onto)\s+"
-        r"(?:my|the)\s+(?:computer|device|laptop|pc|machine)\b",
+    install_patterns = [
+        r"\bdownload\s+and\s+install\s+(?:the\s+)?(.+)",
+        r"\binstall\s+(?:the\s+)?(.+)",
+        r"\bdownload\s+(?:the\s+)?(.+)",
     ]
 
     generic_words = {
@@ -106,24 +111,53 @@ def _extract_software(text: str) -> str | None:
         "that",
         "approved",
         "requested",
-        "computer",
-        "device",
-        "laptop",
-        "pc",
-        "machine",
-        "my",
-        "the computer",
-        "my computer",
-        "the device",
-        "my device",
-        "the laptop",
-        "my laptop",
-        "the pc",
-        "my pc",
     }
 
-    for pattern in patterns:
-        match = re.search(pattern, text, flags=re.IGNORECASE)
+    # These phrases describe where/how the software is installed,
+    # not the software name itself.
+    trailing_context_patterns = [
+        r"\s+(?:on|onto)\s+(?:my|the)\s+"
+        r"(?:company\s+)?(?:computer|device|laptop|pc|machine)\b.*$",
+
+        r"\s+(?:on|onto)\s+(?:my|the)\s+"
+        r"(?:company\s+)?(?:computer|device|laptop|pc|machine)\b$",
+
+        r"\s+(?:for|on)\s+(?:my|the)\s+"
+        r"(?:company\s+)?(?:computer|device|laptop|pc|machine)\b.*$",
+
+        r"\s+(?:on|onto)\s+my\s+company\s+laptop\b.*$",
+
+        r"\s+(?:on|onto)\s+my\s+laptop\b.*$",
+
+        r"\s+(?:on|onto)\s+the\s+laptop\b.*$",
+
+        r"\s+(?:on|onto)\s+my\s+computer\b.*$",
+
+        r"\s+(?:on|onto)\s+the\s+computer\b.*$",
+
+        r"\s+(?:on|onto)\s+my\s+device\b.*$",
+
+        r"\s+(?:on|onto)\s+the\s+device\b.*$",
+
+        r"\s+(?:on|onto)\s+my\s+pc\b.*$",
+
+        r"\s+(?:on|onto)\s+the\s+pc\b.*$",
+
+        r"\s+(?:on|onto)\s+my\s+machine\b.*$",
+
+        r"\s+(?:on|onto)\s+the\s+machine\b.*$",
+    ]
+
+    # ---------------------------------------------------------
+    # 1. Explicit "software called/named X"
+    # ---------------------------------------------------------
+
+    for pattern in explicit_patterns:
+        match = re.search(
+            pattern,
+            normalized,
+            flags=re.IGNORECASE,
+        )
 
         if not match:
             continue
@@ -131,15 +165,53 @@ def _extract_software(text: str) -> str | None:
         candidate = _clean_entity(match.group(1))
 
         candidate = re.sub(
-            r"\s+(?:on|onto)\s+(?:my|the)\s+"
-            r"(?:computer|device|laptop|pc|machine)$",
+            r"\s+(?:software|application|program|app)$",
             "",
             candidate,
             flags=re.IGNORECASE,
         )
 
+        candidate = _clean_entity(candidate)
+
+        if candidate and candidate.lower() not in generic_words:
+            return candidate.title()
+
+    # ---------------------------------------------------------
+    # 2. Installation/download requests
+    # ---------------------------------------------------------
+
+    for pattern in install_patterns:
+        match = re.search(
+            pattern,
+            normalized,
+            flags=re.IGNORECASE,
+        )
+
+        if not match:
+            continue
+
+        candidate = _clean_entity(match.group(1))
+
+        # Remove trailing device/location/context language.
+        for context_pattern in trailing_context_patterns:
+            candidate = re.sub(
+                context_pattern,
+                "",
+                candidate,
+                flags=re.IGNORECASE,
+            )
+
+        # Remove common trailing words.
         candidate = re.sub(
-            r"\s+(?:software|application|program|app)$",
+            r"\s+(?:software|application|program|app)\s*$",
+            "",
+            candidate,
+            flags=re.IGNORECASE,
+        )
+
+        # Remove trailing request language.
+        candidate = re.sub(
+            r"\s+(?:please|for me|as soon as possible|right now)\s*$",
             "",
             candidate,
             flags=re.IGNORECASE,
@@ -154,6 +226,46 @@ def _extract_software(text: str) -> str | None:
             continue
 
         return candidate.title()
+
+    # ---------------------------------------------------------
+    # 3. "I need/want X installed on my laptop"
+    # ---------------------------------------------------------
+
+    need_patterns = [
+        r"\b(?:need|want|require)\s+(.+?)\s+"
+        r"(?:software|application|program|app)\s+"
+        r"(?:installed|installation)\b",
+
+        r"\b(?:need|want|require)\s+(.+?)\s+"
+        r"installed\s+(?:on|onto)\s+"
+        r"(?:my|the)\s+(?:company\s+)?"
+        r"(?:computer|device|laptop|pc|machine)\b",
+    ]
+
+    for pattern in need_patterns:
+        match = re.search(
+            pattern,
+            normalized,
+            flags=re.IGNORECASE,
+        )
+
+        if not match:
+            continue
+
+        candidate = _clean_entity(match.group(1))
+
+        candidate = re.sub(
+            r"\s+(?:on|onto)\s+(?:my|the)\s+"
+            r"(?:company\s+)?(?:computer|device|laptop|pc|machine)$",
+            "",
+            candidate,
+            flags=re.IGNORECASE,
+        )
+
+        candidate = _clean_entity(candidate)
+
+        if candidate and candidate.lower() not in generic_words:
+            return candidate.title()
 
     return None
 
@@ -195,14 +307,17 @@ def _extract_access_resource(text: str) -> str | None:
     }
 
     for pattern in patterns:
-        match = re.search(pattern, text, flags=re.IGNORECASE)
+        match = re.search(
+            pattern,
+            text,
+            flags=re.IGNORECASE,
+        )
 
         if not match:
             continue
 
         candidate = _clean_entity(match.group(1))
 
-        # Remove trailing request language.
         candidate = re.sub(
             r"\s+(?:please|for me|as soon as possible)$",
             "",
@@ -417,10 +532,6 @@ def understand_request(request: str) -> UnderstandingResult:
 
     # ---------------------------------------------------------
     # 1. Privileged/security-sensitive requests
-    #
-    # This is deliberately checked first so:
-    # "give me admin access to Salesforce"
-    # does NOT become ordinary application access.
     # ---------------------------------------------------------
 
     if _is_privileged_request(text):
