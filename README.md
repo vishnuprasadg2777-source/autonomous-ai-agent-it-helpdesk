@@ -37,6 +37,7 @@ The system combines:
 
 * Natural-language request understanding
 * Enterprise knowledge retrieval
+* Semantic embedding-based retrieval
 * IT World Model / state observation
 * LLM-assisted reasoning and planning
 * Deterministic planning fallback
@@ -47,6 +48,7 @@ The system combines:
 * Verification
 * Ticket state management
 * Audit logging
+* PostgreSQL persistence
 * Human escalation
 
 ⸻
@@ -55,7 +57,7 @@ The system combines:
 
 PSAIAC_60 – Autonomous AI Agent for IT Helpdesk
 
-IT teams spend significant time handling repetitive Level-1 helpdesk requests. The project investigates an autonomous AI agent capable of handling suitable routine IT requests while maintaining policy, authorization, safety, controlled execution, verification, and escalation mechanisms.
+IT teams spend significant time handling repetitive Level-1 helpdesk requests. The project investigates an autonomous AI agent capable of handling suitable routine IT requests while maintaining policy, authorization, safety, controlled execution, verification, persistence, and escalation mechanisms.
 
 The prototype focuses on controlled or simulated IT operations rather than unrestricted production infrastructure access.
 
@@ -122,6 +124,31 @@ The implemented workflow is:
 
 The LLM is constrained by the surrounding planning, policy, authorization, controlled-tool, verification, and persistence layers.
 
+The final Dockerized prototype uses:
+
+Qwen2.5-3B-Instruct
+        │
+      Ollama
+        │
+        ▼
+   Agent Reasoning
+        │
+   ┌────┴────┐
+   │         │
+   ▼         ▼
+BGE-small   Python
+   │       Agent Logic
+   ▼         │
+ChromaDB     ▼
+   │       FastAPI
+   └────┬────┘
+        ▼
+   PostgreSQL
+        │
+        ▼
+Controlled IT Tools
+ / Mock IT Lab
+
 ⸻
 
 5. Seven Agent Stages
@@ -149,7 +176,12 @@ Confidence: 0.96
 
 Retrieves relevant helpdesk knowledge to ground the agent’s reasoning.
 
-The current prototype includes deterministic keyword-based retrieval with multiple knowledge sources.
+The final prototype supports semantic retrieval using:
+
+* BGE-small-en-v1.5
+* ChromaDB
+
+A deterministic keyword-based fallback is also available for supported prototype workflows.
 
 Example knowledge sources include:
 
@@ -159,6 +191,19 @@ Example knowledge sources include:
 * Access Request Procedure
 * Password Reset Procedure
 * Software Installation Procedure
+
+The Dockerized retrieval path was directly verified using a VPN query.
+
+The verification confirmed:
+
+BGE model loaded: PASS
+Query embedding generated: PASS
+Embedding dimensions: 384
+ChromaDB collection: phoenix_knowledge
+Documents: 6
+Semantic retrieval: PASS
+
+The VPN troubleshooting document was returned as the top semantic result.
 
 ⸻
 
@@ -185,6 +230,11 @@ The system distinguishes the pre-action IT state from the post-action state used
 Generates a candidate remediation plan using the request, retrieved knowledge, and observed IT state.
 
 The implementation supports LLM-assisted planning with deterministic fallback.
+
+The current Docker deployment uses:
+
+LLM: Qwen2.5-3B-Instruct
+Runtime: Ollama
 
 Example:
 
@@ -280,11 +330,17 @@ Request
    ↓
 Understanding
    ↓
+Retrieval
+   ↓
+Observation
+   ↓
 Reasoning
    ↓
 Policy
    ↓
 Controlled Tool
+   ↓
+Post-action Observation
    ↓
 Verification
 
@@ -315,7 +371,9 @@ This demonstrates the intended policy boundary between reasoning and execution.
 
 8. Persistence and Auditability
 
-The prototype includes local SQLite persistence for:
+The current Docker deployment uses PostgreSQL for persistent runtime storage.
+
+PostgreSQL stores:
 
 * Tickets
 * Ticket status transitions
@@ -336,11 +394,18 @@ Agent runs record structured evidence including:
 
 Sensitive secrets are not intentionally stored in agent-run evidence.
 
-The local runtime database is stored under:
+The Dockerized PostgreSQL service uses persistent Docker storage.
 
-backend/.data/
+PostgreSQL persistence was verified by:
 
-and is excluded from Git.
+Before restart:
+Tickets: 4
+Audit events: 90
+After PostgreSQL container restart:
+Tickets: 4
+Audit events: 90
+
+Therefore, the stored records survived the PostgreSQL container restart.
 
 ⸻
 
@@ -367,13 +432,11 @@ resolved
 
 Example safety lifecycle:
 
-resolved
+open
  ↓
 in_progress
  ↓
 escalated
-
-The latter supports a new safety-sensitive request against an existing demonstration ticket.
 
 ⸻
 
@@ -383,9 +446,17 @@ The project includes an LLM planning layer.
 
 The implementation supports:
 
-* OpenAI-based planning
-* Optional local Ollama planning
+* Qwen2.5-3B-Instruct through Ollama
+* OpenAI-based planning configuration
 * Deterministic fallback planning
+
+The current Docker deployment uses:
+
+Qwen2.5-3B-Instruct
+        ↓
+      Ollama
+        ↓
+PHOENIX reasoning layer
 
 The LLM is used for candidate plan generation, while policy and controlled execution layers remain responsible for authorization and execution constraints.
 
@@ -402,8 +473,12 @@ Backend
 * Pydantic
 * Uvicorn
 * HTTPX
+* ChromaDB
+* Sentence Transformers
+* BGE-small-en-v1.5
+* PostgreSQL
 * OpenAI API integration
-* SQLite persistence
+* Ollama integration
 
 Frontend
 
@@ -412,11 +487,15 @@ Frontend
 * TypeScript
 * Turbopack
 
-Agent Components
+AI / Agent Components
 
 * Request understanding
-* Knowledge retrieval
+* Semantic knowledge retrieval
+* BGE-small-en-v1.5 embeddings
+* ChromaDB vector store
 * IT World Model
+* Qwen2.5-3B-Instruct
+* Ollama
 * LLM reasoning/planning
 * Deterministic planning fallback
 * Policy engine
@@ -425,6 +504,13 @@ Agent Components
 * Audit/persistence layer
 * ITSM integration abstraction
 
+Infrastructure
+
+* Docker
+* Docker Compose
+* PostgreSQL
+* Persistent Docker volumes
+
 Development
 
 * Git
@@ -432,6 +518,13 @@ Development
 * VS Code
 * Python virtual environment
 * npm
+
+Testing
+
+* Pytest
+* CA-04 baseline evaluation
+* Safety evaluation
+* Integration hardening tests
 
 ⸻
 
@@ -462,6 +555,13 @@ AUTONOMOUS-IT-HELPDESK/
 │   ├── PPT/
 │   └── Testing/
 │
+├── 05_Final/
+│   ├── Demo/
+│   ├── Documentation/
+│   ├── Evidence/
+│   ├── PPT/
+│   └── Viva/
+│
 ├── backend/
 │   ├── app/
 │   │   ├── agent/
@@ -486,6 +586,8 @@ AUTONOMOUS-IT-HELPDESK/
 │   ├── package.json
 │   └── package-lock.json
 │
+├── docker-compose.yml
+├── .dockerignore
 ├── .gitignore
 └── README.md
 
@@ -497,24 +599,26 @@ The backend exposes health, ticket, and agent functionality.
 
 Important endpoints include:
 
-GET  /health
-GET  /api/tickets
-GET  /api/tickets/{ticket_id}
+GET   /health
+GET   /api/tickets
+GET   /api/tickets/{ticket_id}
 PATCH /api/tickets/{ticket_id}/status
-POST /api/agent/run
-POST /api/agent/run/demo
-GET  /openapi.json
+POST  /api/agent/run
+POST  /api/agent/run/demo
+GET   /openapi.json
 
 The API can be inspected through the FastAPI OpenAPI specification.
 
 ⸻
 
-14. Running the Backend
+14. Running the Backend Locally
 
 From the project root:
 
 cd /Users/vishnu/Documents/AUTONOMOUS-IT-HELPDESK
-python -m uvicorn backend.app.main:app --reload --port 8000
+backend/.venv/bin/uvicorn backend.app.main:app \
+  --reload \
+  --port 8000
 
 Backend:
 
@@ -533,7 +637,7 @@ Expected response:
 
 ⸻
 
-15. Running the Frontend
+15. Running the Frontend Locally
 
 Open a second terminal:
 
@@ -546,7 +650,43 @@ http://localhost:3000
 
 ⸻
 
-16. Production Build Verification
+16. Docker Deployment
+
+The current prototype can be deployed using Docker Compose.
+
+From the project root:
+
+cd /Users/vishnu/Documents/AUTONOMOUS-IT-HELPDESK
+docker compose up -d --build
+
+The Docker deployment contains:
+
+phoenix-postgres
+phoenix-backend
+phoenix-frontend
+
+Current service mapping:
+
+PostgreSQL:
+Host port 5433 → Container port 5432
+Backend:
+Host port 8000 → Container port 8000
+Frontend:
+Host port 3001 → Container port 3000
+
+The Docker backend communicates with the host Ollama service through:
+
+http://host.docker.internal:11434
+
+The configured local LLM is:
+
+qwen2.5:3b
+
+The backend uses PostgreSQL for persistence and a persistent Docker volume for ChromaDB data.
+
+⸻
+
+17. Production Build Verification
 
 The frontend production build has been verified successfully.
 
@@ -581,7 +721,7 @@ Available application routes include:
 
 ⸻
 
-17. Testing and Evaluation
+18. Testing and Evaluation
 
 CA-04 baseline evaluation contains six documented scenarios.
 
@@ -593,29 +733,38 @@ CA4-TC-004	Application access	Passed
 CA4-TC-005	Privileged access safety	Passed
 CA4-TC-006	Unsupported request safety	Passed
 
-Baseline result:
+Baseline Result
 
 6/6 passed
-100%
+100% pass rate
 
-Safety evaluation:
+Safety Evaluation
 
-2/2 passed
-100%
+2/2 safety tests passed
 Unsafe tool executions: 0
 False-action rate: 0.0%
 
-Additional hardening checks included:
+Additional Verification
 
-* Destructive production-data request
-* Privileged access request
-* Malformed API request
-* Backend operational-state verification
+The final prototype also verified:
+
+* Docker backend health
+* Qwen2.5-3B through Ollama
+* BGE-small-en-v1.5 model loading
+* 384-dimensional query embeddings
+* ChromaDB collection availability
+* ChromaDB semantic retrieval
+* PostgreSQL ticket persistence
+* PostgreSQL audit persistence
+* PostgreSQL restart persistence
+* Privileged access blocking
+* Destructive request safety
 * Frontend production build
+* Dockerized frontend/backend services
 
 ⸻
 
-18. Evidence and Review Materials
+19. Evidence and Review Materials
 
 CA-01
 
@@ -659,9 +808,19 @@ Contains:
 * Evidence index
 * Implementation/progress presentation
 
+Final
+
+Contains:
+
+* Final implementation report
+* Final evidence index
+* Final demo runbook
+* Final presentation
+* Final viva questions and answers
+
 ⸻
 
-19. Research Contribution
+20. Research Contribution
 
 The project investigates the integration of:
 
@@ -687,7 +846,7 @@ The project does not claim that the individual technologies themselves are novel
 
 ⸻
 
-20. Current Implementation Status
+21. Current Implementation Status
 
 The repository has progressed beyond the original CA-02 model-design stage.
 
@@ -700,6 +859,14 @@ CA-03  Functional + Safety Testing     Completed
 CA-04  Integration + Hardening         Completed
 CA-04  Baseline Evaluation             Completed
 CA-04  Safety Evaluation               Completed
+BGE Embedding Integration              Verified
+ChromaDB Semantic Retrieval            Verified
+Qwen2.5-3B + Ollama                    Verified
+PostgreSQL Persistence                 Verified
+PostgreSQL Restart Persistence         Verified
+Docker Backend                         Running
+Docker Frontend                        Running
+Docker PostgreSQL                      Running
 Frontend Production Build              Passed
 GitHub Repository                      Synchronized
 
@@ -707,28 +874,30 @@ The current prototype has been tested as a controlled autonomous IT-helpdesk wor
 
 ⸻
 
-21. Current Prototype Limitations
+22. Current Prototype Limitations
 
 The current implementation is a research/academic prototype and should not be represented as a production enterprise IT automation platform.
 
 Current limitations include:
 
-* SQLite is used for local persistence.
-* Enterprise PostgreSQL deployment is not implemented.
-* The current retrieval implementation uses deterministic keyword retrieval; the embedding retriever is an extension point rather than a completed production vector-search implementation.
+* The IT environment and controlled tools are simulated/prototype components.
+* The tool set is intentionally limited to selected Level-1 workflows.
 * ServiceNow/Jira integration is represented through an integration abstraction rather than a verified live enterprise deployment.
 * Enterprise SSO/identity integration is not implemented.
-* The controlled IT tools operate within the prototype environment and should not be interpreted as unrestricted production infrastructure automation.
-* Production-grade deployment, monitoring, secrets management, and enterprise infrastructure controls would require additional implementation.
+* Production-grade enterprise monitoring and operational controls require additional implementation.
+* The current local LLM deployment uses a relatively small model and would require further evaluation before enterprise-scale use.
+* Larger-scale statistical evaluation across broader datasets is required.
+* Enterprise infrastructure integrations would require additional authorization, security, reliability, and compliance validation.
+
+The current implementation should therefore be understood as a functional academic prototype demonstrating controlled autonomous IT-helpdesk workflows.
 
 ⸻
 
-22. Future Scope
+23. Future Scope
 
 Potential extensions include:
 
-* PostgreSQL production persistence
-* Production vector/embedding retrieval
+* Live enterprise ITSM integration
 * ServiceNow integration
 * Jira integration
 * Enterprise SSO
@@ -738,13 +907,16 @@ Potential extensions include:
 * Agent memory
 * Multi-agent coordination
 * Stronger monitoring and observability
+* Enterprise-scale model serving
+* Enterprise-scale vector retrieval
 * Production deployment
 * Additional security controls
 * Larger-scale evaluation
+* More advanced failure recovery and re-planning
 
 ⸻
 
-23. Project Safety Principle
+24. Project Safety Principle
 
 The central design principle is:
 
@@ -775,18 +947,14 @@ This separation is fundamental to the PHOENIX IT HELPDESK design.
 
 ⸻
 
-24. Team
+25. Team
 
 CAI_27
-
 Vishnu Prasad Gotur
 Roll No: 20221CAI0154
-
 Shivaraj
 Roll No: 20231CAI0139
-
 Guide
-
 Mr. Parth Naik
 Assistant Professor
 School of Computer Science and Engineering
@@ -794,7 +962,7 @@ Presidency University
 
 ⸻
 
-25. Repository
+26. Repository
 
 GitHub:
 
