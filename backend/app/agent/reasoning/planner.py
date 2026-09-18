@@ -256,7 +256,7 @@ def _intent_to_action(
                 "required operation. Installation must proceed through "
                 "the controlled tool gateway and applicable policy."
             ),
-            "Medium",
+            "Low",
             True,
             0.90,
         )
